@@ -13,7 +13,7 @@ const copy = {
     practice: "Pratiquer",
     progress: "Mes progrès",
     help: "Aide",
-    greeting: "Bonjour, Michel",
+    greeting: "Bonjour, Salah",
     subtitle: "Voici votre programme pour aujourd’hui.",
     goodMorning: "Mardi 14 juillet",
     ready: "Prêt à commencer?",
@@ -43,7 +43,7 @@ const copy = {
     practice: "Practice",
     progress: "My progress",
     help: "Help",
-    greeting: "Hello, Michel",
+    greeting: "Hello, Salah",
     subtitle: "Here is your program for today.",
     goodMorning: "Tuesday, July 14",
     ready: "Ready to begin?",
@@ -125,9 +125,9 @@ export default function ÉlanApp() {
             </button>
           ))}
         </nav>
-        <button className="profile-pill" aria-label={language === "fr" ? "Profil de Michel" : "Michel’s profile"}>
-          <span>MG</span>
-          <span className="profile-copy">Michel<br /><small>{language === "fr" ? "Mon profil" : "My profile"}</small></span>
+        <button className="profile-pill" aria-label={language === "fr" ? "Profil de Salah" : "Salah’s profile"}>
+          <span>SL</span>
+          <span className="profile-copy">Salah<br /><small>{language === "fr" ? "Mon profil" : "My profile"}</small></span>
         </button>
       </aside>
 
