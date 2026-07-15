@@ -1,87 +1,55 @@
 import assert from "node:assert/strict";
-import { access, readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const developmentPreviewMeta =
-  /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
-const templateRoot = new URL("../", import.meta.url);
-const previewRoot = new URL("../app/_sites-preview/", import.meta.url);
+const appRoot = new URL("../app/", import.meta.url);
 
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
-}
-
-test("server-renders the starter loading skeleton", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
-  assert.match(html, developmentPreviewMeta);
-  assert.match(html, /<title>Your site is taking shape<\/title>/i);
-  assert.match(html, /Codex is working/);
-  assert.match(html, /Your site is taking shape/);
-  assert.match(html, /Codex is building the first version/);
-  assert.match(html, /react-loading-skeleton/);
-  assert.match(html, /role="status"/);
-});
-
-test("keeps the loading skeleton scoped and disposable", async () => {
-  const [preview, css, page, layout, packageJson, files] = await Promise.all([
-    readFile(new URL("SkeletonPreview.tsx", previewRoot), "utf8"),
-    readFile(new URL("preview.css", previewRoot), "utf8"),
-    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../package.json", import.meta.url), "utf8"),
-    readdir(previewRoot),
+test("My Plan exposes every requested category and both durable write paths", async () => {
+  const [plan, api, schema] = await Promise.all([
+    readFile(new URL("MyPlan.tsx", appRoot), "utf8"),
+    readFile(new URL("api/plan/route.ts", appRoot), "utf8"),
+    readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
   ]);
 
-  assert.deepEqual(files.sort(), ["SkeletonPreview.tsx", "preview.css"]);
-  assert.match(preview, /from "react-loading-skeleton"/);
-  assert.match(preview, /baseColor="#eceae7"/);
-  assert.match(preview, /highlightColor="#f9f8f6"/);
-  assert.match(preview, /duration=\{2\.8\}/);
-  assert.match(preview, /sites-skeleton-search-placeholder/);
-  assert.match(packageJson, /"react-loading-skeleton": "3\.5\.0"/);
+  for (const category of ["appointments", "todos", "diet", "exercises"]) {
+    assert.match(plan, new RegExp(`id: "${category}"`));
+  }
+  assert.match(plan, /actorRole: ActorRole/);
+  assert.match(plan, /method: "POST"/);
+  assert.match(plan, /method: "PATCH"/);
+  assert.match(api, /ACTOR_ROLES = new Set\(\["patient", "admin"\]\)/);
+  assert.match(api, /INSERT INTO plan_entries/);
+  assert.match(api, /plan_entry\.status_changed/);
+  assert.match(schema, /export const planEntries/);
+  assert.match(schema, /export const exerciseLibrary/);
+});
 
-  const shellIndex = preview.indexOf('className="sites-skeleton-shell"');
-  const statusIndex = preview.indexOf('className="sites-skeleton-status"');
-  assert.ok(shellIndex >= 0 && statusIndex > shellIndex);
-  assert.match(css, /position:\s*fixed/);
-  assert.match(css, /inset:\s*0/);
-  assert.match(css, /opacity:\s*0\.52/);
-  assert.match(css, /prefers-reduced-motion:\s*reduce/);
-  assert.doesNotMatch(css, /#020617|canvas|pets|progress/i);
-  assert.doesNotMatch(
-    preview,
-    /loading-spinner|status-mark|status-progress|canvas|cookie|random/i,
-  );
+test("clinical content keeps evidence and safety boundaries attached", async () => {
+  const [plan, api] = await Promise.all([
+    readFile(new URL("MyPlan.tsx", appRoot), "utf8"),
+    readFile(new URL("api/plan/route.ts", appRoot), "utf8"),
+  ]);
 
-  assert.match(page, /export const metadata:\s*Metadata/);
-  assert.match(page, /"codex-preview": "development"/);
-  assert.match(page, /<SkeletonPreview \/>/);
-  assert.match(layout, /title:\s*"Starter Project"/);
-  assert.doesNotMatch(layout, /codex-preview|_sites-preview|themeColor|\bViewport\b/);
-  assert.doesNotMatch(css, /(^|\s)(html|body)\s*\{/m);
+  assert.match(api, /pubmed\.ncbi\.nlm\.nih\.gov\/29710193/);
+  assert.match(api, /pubmed\.ncbi\.nlm\.nih\.gov\/24859467/);
+  assert.match(api, /stroke-rehabilitation-delivery\/7-language-and-communication/);
+  assert.match(api, /stroke-rehabilitation-delivery\/4-lower-extremity-balance-mobility-and-aerobic-training/);
+  assert.match(plan, /Une carte est un modèle — pas une prescription autonome/);
+  assert.match(plan, /validation clinique requise/);
+  assert.match(plan, /L’alimentation ne remplace jamais un plan de déglutition/);
+});
 
-  await assert.rejects(
-    access(new URL("public/_sites-preview", templateRoot)),
-  );
+test("the product navigation uses My Plan and persists day/night preference", async () => {
+  const [app, css] = await Promise.all([
+    readFile(new URL("ElanApp.tsx", appRoot), "utf8"),
+    readFile(new URL("globals.css", appRoot), "utf8"),
+  ]);
+
+  assert.match(app, /type Role = "patient" \| "family" \| "admin"/);
+  assert.match(app, /<MyPlan/);
+  assert.doesNotMatch(app, /role === "clinician"|ClinicianPortal/);
+  assert.match(app, /localStorage\.setItem\("elan-theme", nextTheme\)/);
+  assert.match(css, /html\[data-theme="night"\]/);
+  assert.match(css, /\.momentum-card/);
+  assert.match(css, /\.exercise-research-card/);
 });

@@ -1,0 +1,42 @@
+CREATE TABLE `exercise_library` (
+	`id` text PRIMARY KEY NOT NULL,
+	`domain` text NOT NULL,
+	`title_fr` text NOT NULL,
+	`title_en` text NOT NULL,
+	`summary_fr` text NOT NULL,
+	`summary_en` text NOT NULL,
+	`instructions_fr` text NOT NULL,
+	`instructions_en` text NOT NULL,
+	`assistance_fr` text NOT NULL,
+	`assistance_en` text NOT NULL,
+	`evidence_title` text NOT NULL,
+	`evidence_url` text NOT NULL,
+	`safety_class` text NOT NULL,
+	`review_required` integer DEFAULT true NOT NULL,
+	`difficulty` integer DEFAULT 1 NOT NULL,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE `plan_entries` (
+	`id` text PRIMARY KEY NOT NULL,
+	`patient_id` text NOT NULL,
+	`category` text NOT NULL,
+	`title_fr` text NOT NULL,
+	`title_en` text NOT NULL,
+	`description_fr` text DEFAULT '' NOT NULL,
+	`description_en` text DEFAULT '' NOT NULL,
+	`scheduled_at` text,
+	`status` text DEFAULT 'active' NOT NULL,
+	`source` text DEFAULT 'manual' NOT NULL,
+	`created_by_role` text NOT NULL,
+	`created_by_name` text NOT NULL,
+	`evidence_title` text,
+	`evidence_url` text,
+	`safety_class` text DEFAULT 'standard' NOT NULL,
+	`points` integer DEFAULT 10 NOT NULL,
+	`exercise_library_id` text,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	FOREIGN KEY (`patient_id`) REFERENCES `patient_profiles`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`exercise_library_id`) REFERENCES `exercise_library`(`id`) ON UPDATE no action ON DELETE no action
+);

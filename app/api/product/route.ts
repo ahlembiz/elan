@@ -1,11 +1,13 @@
 import { desc, eq } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import { getDb } from "../../../db";
-import { assignments, attempts, consents, exercises, goals, mediaAssets, observations, patientProfiles, users } from "../../../db/schema";
+import { assignments, attempts, consents, exercises, goals, mediaAssets, observations, patientProfiles } from "../../../db/schema";
 
 const PATIENT_ID = "patient-salah";
 
-async function ensureDemoWorkspace() {
+let productWorkspacePromise: Promise<void> | null = null;
+
+async function initializeProductWorkspace() {
   await env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY NOT NULL, email TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, role TEXT NOT NULL, locale TEXT DEFAULT 'fr-CA' NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS patient_profiles (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, preferred_name TEXT NOT NULL, preferred_language TEXT DEFAULT 'fr-CA' NOT NULL, primary_goal TEXT NOT NULL, supervision_summary TEXT NOT NULL, next_review_date TEXT NOT NULL, updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL, FOREIGN KEY (user_id) REFERENCES users(id))"),
@@ -21,31 +23,34 @@ async function ensureDemoWorkspace() {
     env.DB.prepare("CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, patient_id TEXT, actor_email TEXT NOT NULL, action TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT, detail TEXT DEFAULT '' NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL, FOREIGN KEY (patient_id) REFERENCES patient_profiles(id))"),
   ]);
 
-  const db = getDb();
-  await db.insert(users).values({ id: "user-salah", email: "salah@demo.elan", displayName: "Salah", role: "patient" }).onConflictDoNothing();
-  await db.insert(users).values({ id: "user-sylvie", email: "sylvie@demo.elan", displayName: "Sylvie", role: "family" }).onConflictDoNothing();
-  await db.insert(users).values({ id: "user-marie", email: "marie-claude@demo.elan", displayName: "Marie-Claude", role: "clinician" }).onConflictDoNothing();
-  await db.insert(patientProfiles).values({ id: PATIENT_ID, userId: "user-salah", preferredName: "Salah", primaryGoal: "Demander ce dont j’ai besoin avec plus d’autonomie", supervisionSummary: "Quelqu’un à proximité pour les transferts et exercices debout", nextReviewDate: "2026-07-16" }).onConflictDoNothing();
-  await db.insert(goals).values([
-    { id: "goal-communication", patientId: PATIENT_ID, domain: "communication", title: "Utiliser une phrase utile avec un seul indice", progressNote: "5 mots personnels demandent moins d’aide", reviewDate: "2026-07-16" },
-    { id: "goal-mobility", patientId: PATIENT_ID, domain: "mobility", title: "Se lever d’une chaise avec supervision", progressNote: "5 répétitions complétées à effort modéré", reviewDate: "2026-07-18" },
-    { id: "goal-participation", patientId: PATIENT_ID, domain: "participation", title: "Demander un verre d’eau dans la cuisine", progressNote: "Mission réussie 3 fois cette semaine", reviewDate: "2026-07-20" },
-  ]).onConflictDoNothing();
-  await db.insert(exercises).values([
-    { id: "exercise-words", domain: "communication", titleFr: "Mes mots importants", titleEn: "My important words", instructionsFr: "Dites, montrez ou écrivez le mot.", instructionsEn: "Say, point to, or write the word.", assistanceLevel: "Indices gradués", repetitions: "3 mots", clinicianName: "Marie-Claude", reviewedAt: "2026-07-10" },
-    { id: "exercise-chair", domain: "mobility", titleFr: "Se lever d’une chaise", titleEn: "Stand up from a chair", instructionsFr: "Pieds au sol. Penchez-vous vers l’avant.", instructionsEn: "Feet on the floor. Lean forward.", assistanceLevel: "Quelqu’un à proximité", repetitions: "5 répétitions", safetyNoteFr: "Arrêtez en cas de douleur ou d’étourdissement.", safetyNoteEn: "Stop if you feel pain or dizziness.", clinicianName: "Karim B.", reviewedAt: "2026-07-11" },
-    { id: "exercise-kitchen", domain: "participation", titleFr: "Mission dans la cuisine", titleEn: "Kitchen mission", instructionsFr: "Demandez un verre d’eau à votre façon.", instructionsEn: "Ask for a glass of water in your own way.", assistanceLevel: "Partenaire disponible", repetitions: "1 mission", clinicianName: "Marie-Claude", reviewedAt: "2026-07-10" },
-  ]).onConflictDoNothing();
-  await db.insert(assignments).values([
-    { id: "assignment-words", patientId: PATIENT_ID, exerciseId: "exercise-words", scheduledDate: "2026-07-14", orderIndex: 1 },
-    { id: "assignment-chair", patientId: PATIENT_ID, exerciseId: "exercise-chair", scheduledDate: "2026-07-14", orderIndex: 2 },
-    { id: "assignment-kitchen", patientId: PATIENT_ID, exerciseId: "exercise-kitchen", scheduledDate: "2026-07-14", orderIndex: 3 },
-  ]).onConflictDoNothing();
+  await env.DB.batch([
+    env.DB.prepare("INSERT OR IGNORE INTO users (id, email, display_name, role) VALUES ('user-salah', 'salah@elan.local', 'Salah', 'patient')"),
+    env.DB.prepare("INSERT OR IGNORE INTO users (id, email, display_name, role) VALUES ('user-sylvie', 'sylvie@elan.local', 'Sylvie', 'family')"),
+    env.DB.prepare("INSERT OR IGNORE INTO users (id, email, display_name, role) VALUES ('user-admin', 'admin@elan.local', 'Équipe Élan', 'admin')"),
+    env.DB.prepare("INSERT OR IGNORE INTO patient_profiles (id, user_id, preferred_name, primary_goal, supervision_summary, next_review_date) VALUES (?, 'user-salah', 'Salah', ?, ?, '2026-07-16')").bind(PATIENT_ID, "Demander ce dont j’ai besoin avec plus d’autonomie", "Quelqu’un à proximité pour les transferts et exercices debout"),
+    env.DB.prepare("INSERT OR IGNORE INTO goals (id, patient_id, domain, title, progress_note, review_date) VALUES ('goal-communication', ?, 'communication', ?, ?, '2026-07-16')").bind(PATIENT_ID, "Utiliser une phrase utile avec un seul indice", "5 mots personnels demandent moins d’aide"),
+    env.DB.prepare("INSERT OR IGNORE INTO goals (id, patient_id, domain, title, progress_note, review_date) VALUES ('goal-mobility', ?, 'mobility', ?, ?, '2026-07-18')").bind(PATIENT_ID, "Se lever d’une chaise avec supervision", "5 répétitions complétées à effort modéré"),
+    env.DB.prepare("INSERT OR IGNORE INTO goals (id, patient_id, domain, title, progress_note, review_date) VALUES ('goal-participation', ?, 'participation', ?, ?, '2026-07-20')").bind(PATIENT_ID, "Demander un verre d’eau dans la cuisine", "Mission réussie 3 fois cette semaine"),
+    env.DB.prepare("INSERT OR IGNORE INTO exercises (id, domain, title_fr, title_en, instructions_fr, instructions_en, assistance_level, repetitions, clinician_name, reviewed_at) VALUES ('exercise-words', 'communication', 'Mes mots importants', 'My important words', 'Dites, montrez ou écrivez le mot.', 'Say, point to, or write the word.', 'Indices gradués', '3 mots', 'Marie-Claude', '2026-07-10')"),
+    env.DB.prepare("INSERT OR IGNORE INTO exercises (id, domain, title_fr, title_en, instructions_fr, instructions_en, assistance_level, repetitions, safety_note_fr, safety_note_en, clinician_name, reviewed_at) VALUES ('exercise-chair', 'mobility', 'Se lever d’une chaise', 'Stand up from a chair', 'Pieds au sol. Penchez-vous vers l’avant.', 'Feet on the floor. Lean forward.', 'Quelqu’un à proximité', '5 répétitions', 'Arrêtez en cas de douleur ou d’étourdissement.', 'Stop if you feel pain or dizziness.', 'Karim B.', '2026-07-11')"),
+    env.DB.prepare("INSERT OR IGNORE INTO exercises (id, domain, title_fr, title_en, instructions_fr, instructions_en, assistance_level, repetitions, clinician_name, reviewed_at) VALUES ('exercise-kitchen', 'participation', 'Mission dans la cuisine', 'Kitchen mission', 'Demandez un verre d’eau à votre façon.', 'Ask for a glass of water in your own way.', 'Partenaire disponible', '1 mission', 'Marie-Claude', '2026-07-10')"),
+    env.DB.prepare("INSERT OR IGNORE INTO assignments (id, patient_id, exercise_id, scheduled_date, order_index) VALUES ('assignment-words', ?, 'exercise-words', '2026-07-14', 1)").bind(PATIENT_ID),
+    env.DB.prepare("INSERT OR IGNORE INTO assignments (id, patient_id, exercise_id, scheduled_date, order_index) VALUES ('assignment-chair', ?, 'exercise-chair', '2026-07-14', 2)").bind(PATIENT_ID),
+    env.DB.prepare("INSERT OR IGNORE INTO assignments (id, patient_id, exercise_id, scheduled_date, order_index) VALUES ('assignment-kitchen', ?, 'exercise-kitchen', '2026-07-14', 3)").bind(PATIENT_ID),
+  ]);
+}
+
+export function ensureProductWorkspace() {
+  productWorkspacePromise ??= initializeProductWorkspace().catch((error) => {
+    productWorkspacePromise = null;
+    throw error;
+  });
+  return productWorkspacePromise;
 }
 
 export async function GET() {
   try {
-    await ensureDemoWorkspace();
+    await ensureProductWorkspace();
     const db = getDb();
     const [profile] = await db.select().from(patientProfiles).where(eq(patientProfiles.id, PATIENT_ID)).limit(1);
     const patientGoals = await db.select().from(goals).where(eq(goals.patientId, PATIENT_ID));
@@ -62,7 +67,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await ensureDemoWorkspace();
+    await ensureProductWorkspace();
     const payload = await request.json() as Record<string, unknown>;
     const db = getDb();
     if (payload.kind === "observation") {

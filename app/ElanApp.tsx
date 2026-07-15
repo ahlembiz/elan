@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import MyPlan from "./MyPlan";
 
 type Language = "fr" | "en";
-type View = "today" | "communicate" | "practice" | "progress" | "help";
+type View = "today" | "communicate" | "practice" | "plan" | "progress" | "privacy";
 type SessionStep = "checkin" | "words" | "movement" | "mission" | "complete";
-type Role = "patient" | "family" | "clinician";
+type Role = "patient" | "family" | "admin";
+type Theme = "day" | "night";
 
 type ProductData = {
   profile?: { preferredName: string; primaryGoal: string; supervisionSummary: string; nextReviewDate: string };
@@ -96,9 +98,10 @@ const boardMessages = {
   en: ["Yes", "No", "I need help", "Please wait", "I don’t understand", "I am in pain", "I am tired", "Thank you"],
 };
 
-export default function ÉlanApp() {
+export default function ElanApp() {
   const [language, setLanguage] = useState<Language>("fr");
   const [role, setRole] = useState<Role>("patient");
+  const [theme, setTheme] = useState<Theme>("day");
   const [view, setView] = useState<View>("today");
   const [portalTab, setPortalTab] = useState("overview");
   const [productData, setProductData] = useState<ProductData>(fallbackData);
@@ -126,6 +129,21 @@ export default function ÉlanApp() {
       .catch(() => setDataStatus("offline"));
   }, []);
 
+  useEffect(() => {
+    const stored = window.localStorage.getItem("elan-theme");
+    const preferred: Theme = stored === "night" || stored === "day" ? stored : window.matchMedia("(prefers-color-scheme: dark)").matches ? "night" : "day";
+    document.documentElement.dataset.theme = preferred;
+    const frame = window.requestAnimationFrame(() => setTheme(preferred));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  const toggleTheme = () => {
+    const nextTheme: Theme = theme === "day" ? "night" : "day";
+    setTheme(nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    window.localStorage.setItem("elan-theme", nextTheme);
+  };
+
   const nav = useMemo(() => {
     if (role === "family") return [
       { id: "overview", label: language === "fr" ? "Soutien du jour" : "Today’s support", mark: "S" },
@@ -133,19 +151,19 @@ export default function ÉlanApp() {
       { id: "observations", label: language === "fr" ? "Observations" : "Observations", mark: "O" },
       { id: "guidance", label: language === "fr" ? "Guidance" : "Guidance", mark: "?" },
     ];
-    if (role === "clinician") return [
-      { id: "overview", label: language === "fr" ? "Dossier patient" : "Patient record", mark: "D" },
-      { id: "program", label: language === "fr" ? "Programme" : "Program", mark: "P" },
-      { id: "results", label: language === "fr" ? "Résultats" : "Results", mark: "R" },
-      { id: "recordings", label: language === "fr" ? "Enregistrements" : "Recordings", mark: "E" },
-      { id: "observations", label: language === "fr" ? "Observations" : "Observations", mark: "O" },
+    if (role === "admin") return [
+      { id: "overview", label: language === "fr" ? "Mon plan" : "My plan", mark: "A" },
+      { id: "appointments", label: language === "fr" ? "Rendez-vous" : "Appointments", mark: "R" },
+      { id: "todos", label: language === "fr" ? "Tâches" : "To-dos", mark: "✓" },
+      { id: "diet", label: language === "fr" ? "Alimentation" : "Diet", mark: "D" },
+      { id: "exercises", label: language === "fr" ? "Exercices" : "Exercises", mark: "E" },
     ];
     return [
       { id: "today", label: t.today, mark: "A" },
       { id: "communicate", label: t.communicate, mark: "C" },
       { id: "practice", label: t.practice, mark: "P" },
+      { id: "plan", label: language === "fr" ? "Mon plan" : "My plan", mark: "A" },
       { id: "progress", label: t.progress, mark: "M" },
-      { id: "help", label: t.help, mark: "?" },
     ];
   }, [t, role, language]);
 
@@ -153,7 +171,7 @@ export default function ÉlanApp() {
     ? { initials: "SL", name: "Salah", detail: language === "fr" ? "Mon profil" : "My profile" }
     : role === "family"
       ? { initials: "SY", name: "Sylvie", detail: language === "fr" ? "Partenaire" : "Partner" }
-      : { initials: "MC", name: "Marie-Claude", detail: language === "fr" ? "Orthophoniste" : "Speech therapist" };
+      : { initials: "ÉA", name: language === "fr" ? "Équipe Élan" : "Élan team", detail: language === "fr" ? "Administration" : "Administration" };
 
   const selectRole = (nextRole: Role) => {
     setRole(nextRole);
@@ -253,7 +271,7 @@ export default function ÉlanApp() {
   return (
     <div className="app-shell">
       <aside className="side-nav" aria-label={language === "fr" ? "Navigation principale" : "Main navigation"}>
-        <button className="brand" onClick={() => { setView("today"); setSessionOpen(false); }} aria-label="Élan, accueil">
+        <button className="brand" onClick={() => { if (role === "patient") setView("today"); else setPortalTab("overview"); setSessionOpen(false); }} aria-label="Élan, accueil">
           <span className="brand-mark">é</span>
           <span>Élan</span>
         </button>
@@ -265,7 +283,7 @@ export default function ÉlanApp() {
             </button>
           ))}
         </nav>
-        <button className="profile-pill" aria-label={`${roleIdentity.name} — ${roleIdentity.detail}`}>
+        <button className="profile-pill" onClick={() => { if (role === "patient") { setView("privacy"); setSessionOpen(false); } }} aria-label={`${roleIdentity.name} — ${roleIdentity.detail}`}>
           <span>{roleIdentity.initials}</span>
           <span className="profile-copy">{roleIdentity.name}<br /><small>{roleIdentity.detail}</small></span>
         </button>
@@ -274,19 +292,20 @@ export default function ÉlanApp() {
       <main className="main-content">
         <header className="topbar">
           <div>
-            <p className="eyebrow">{role === "patient" ? t.goodMorning : role === "family" ? (language === "fr" ? "Mode partenaire" : "Partner mode") : (language === "fr" ? "Portail clinique" : "Clinician portal")}</p>
-            <h1>{sessionOpen ? (language === "fr" ? "Ma séance" : "My session") : role === "patient" ? t.greeting : role === "family" ? (language === "fr" ? "Bonjour, Sylvie" : "Hello, Sylvie") : (language === "fr" ? "Dossier de Salah" : "Salah’s record")}</h1>
+            <p className="eyebrow">{role === "patient" ? t.goodMorning : role === "family" ? (language === "fr" ? "Mode partenaire" : "Partner mode") : (language === "fr" ? "Administration du plan" : "Plan administration")}</p>
+            <h1>{sessionOpen ? (language === "fr" ? "Ma séance" : "My session") : role === "patient" ? t.greeting : role === "family" ? (language === "fr" ? "Bonjour, Sylvie" : "Hello, Sylvie") : (language === "fr" ? "Plan de Salah" : "Salah’s plan")}</h1>
           </div>
           <div className="top-actions">
             <div className="role-switch" role="group" aria-label={language === "fr" ? "Changer de rôle" : "Change role"}>
               <button className={role === "patient" ? "selected" : ""} onClick={() => selectRole("patient")}>{language === "fr" ? "Patient" : "Patient"}</button>
               <button className={role === "family" ? "selected" : ""} onClick={() => selectRole("family")}>{language === "fr" ? "Proche" : "Family"}</button>
-              <button className={role === "clinician" ? "selected" : ""} onClick={() => selectRole("clinician")}>{language === "fr" ? "Clinique" : "Clinician"}</button>
+              <button className={role === "admin" ? "selected" : ""} onClick={() => selectRole("admin")}>{language === "fr" ? "Admin" : "Admin"}</button>
             </div>
             <div className="language-switch" role="group" aria-label={language === "fr" ? "Choisir la langue" : "Choose language"}>
               <button className={language === "fr" ? "selected" : ""} onClick={() => setLanguage("fr")} aria-pressed={language === "fr"}>FR</button>
               <button className={language === "en" ? "selected" : ""} onClick={() => setLanguage("en")} aria-pressed={language === "en"}>EN</button>
             </div>
+            <button className="theme-button" onClick={toggleTheme} aria-label={theme === "day" ? (language === "fr" ? "Activer le thème de nuit" : "Use night theme") : (language === "fr" ? "Activer le thème de jour" : "Use day theme")} aria-pressed={theme === "night"}><span aria-hidden="true">{theme === "day" ? "☾" : "☀"}</span><small>{theme === "day" ? (language === "fr" ? "Nuit" : "Night") : (language === "fr" ? "Jour" : "Day")}</small></button>
             <button className="audio-button" onClick={() => speakMessage(sessionOpen ? (language === "fr" ? "Ma séance" : "My session") : `${t.greeting}. ${t.subtitle}`)} aria-label={language === "fr" ? "Écouter cette page" : "Listen to this page"}>
               <span aria-hidden="true">)))</span>
               {language === "fr" ? "Écouter" : "Listen"}
@@ -314,15 +333,17 @@ export default function ÉlanApp() {
           />
         ) : role === "family" ? (
           <FamilyPortal language={language} tab={portalTab} data={productData} dataStatus={dataStatus} setData={setProductData} setDataStatus={setDataStatus} />
-        ) : role === "clinician" ? (
-          <ClinicianPortal language={language} tab={portalTab} data={productData} dataStatus={dataStatus} />
+        ) : role === "admin" ? (
+          <MyPlan key={portalTab} language={language} initialTab={portalTab} actorRole="admin" attemptCount={productData.attempts.length} />
         ) : view === "today" ? (
           <Today language={language} onStart={beginSession} />
         ) : view === "progress" ? (
           <Progress language={language} />
         ) : view === "practice" ? (
           <Practice language={language} onStart={beginSession} />
-        ) : view === "help" ? (
+        ) : view === "plan" ? (
+          <MyPlan language={language} actorRole="patient" attemptCount={productData.attempts.length} />
+        ) : view === "privacy" ? (
           <PrivacyCenter language={language} data={productData} setData={setProductData} onConsent={updateConsent} dataStatus={dataStatus} />
         ) : (
           <SimpleView language={language} view={view} onBoard={() => setBoardOpen(true)} />
@@ -380,7 +401,7 @@ function Today({ language, onStart }: { language: Language; onStart: () => void 
     <div className="dashboard">
       <section className="hero-card">
         <div className="hero-copy">
-          <span className="status-chip"><span className="status-dot" /> {language === "fr" ? "Programme prêt" : "Program ready"}</span>
+          <span className="status-chip"><span className="status-dot" /> {language === "fr" ? "Plan personnalisé prêt" : "Personalized plan ready"}</span>
           <h2>{t.ready}</h2>
           <p>{t.subtitle}</p>
           <div className="session-summary">
@@ -449,6 +470,7 @@ function Session({ language, step, setStep, energy, setEnergy, cue, setCue, reco
       {step === "words" && <>
         <p className="eyebrow">{language === "fr" ? "Mes mots importants · 1 sur 3" : "My important words · 1 of 3"}</p>
         <h2>{language === "fr" ? "Dites ce mot à votre façon." : "Say this word in your own way."}</h2>
+        <ResearchLink language={language} label={language === "fr" ? "Analyse des caractéristiques sémantiques · revue systématique" : "Semantic Feature Analysis · systematic review"} href="https://pubmed.ncbi.nlm.nih.gov/29710193/" />
         <div className="word-card"><div className="word-object"><span>☕</span></div><strong>{cue >= 2 ? (language === "fr" ? "Café" : "Coffee") : "?"}</strong>{cue >= 1 && <p>{language === "fr" ? "C’est une boisson chaude." : "It is a hot drink."}</p>}{cue >= 3 && <div className="syllables">CA · FÉ</div>}</div>
         <div className="word-actions"><button className="secondary-button" onClick={() => setCue(Math.min(cue + 1, 3))}>+ {language === "fr" ? "Un indice" : "A cue"}</button><button className={recording ? "record-button recording" : "record-button"} onClick={onRecord}><span />{recording ? (language === "fr" ? "Arrêter" : "Stop") : (language === "fr" ? "Enregistrer" : "Record")}</button></div>
         {recordingStatus !== "idle" && <p className={`recording-status ${recordingStatus}`} role="status">{recordingStatus === "saving" ? (language === "fr" ? "Enregistrement sécurisé…" : "Securing recording…") : recordingStatus === "saved" ? (language === "fr" ? "✓ Enregistrement privé sauvegardé." : "✓ Private recording saved.") : (language === "fr" ? "L’enregistrement n’a pas pu être sauvegardé. Vous pouvez continuer sans enregistrer." : "The recording could not be saved. You can continue without recording.")}</p>}
@@ -459,6 +481,7 @@ function Session({ language, step, setStep, energy, setEnergy, cue, setCue, reco
         <div className="safety-banner"><strong>!</strong><div><b>{language === "fr" ? "Quelqu’un doit être près de vous" : "Someone must be nearby"}</b><span>{language === "fr" ? "Cette consigne ne peut être modifiée que par votre physiothérapeute." : "Only your physiotherapist can change this instruction."}</span></div></div>
         <p className="eyebrow">{language === "fr" ? "Mouvement · 5 répétitions" : "Movement · 5 repetitions"}</p>
         <h2>{language === "fr" ? "Se lever d’une chaise" : "Stand up from a chair"}</h2>
+        <ResearchLink language={language} label={language === "fr" ? "Entraînement assis-debout après un AVC · revue Cochrane" : "Sit-to-stand training after stroke · Cochrane review"} href="https://pubmed.ncbi.nlm.nih.gov/24859467/" />
         <div className="movement-demo"><div className="chair-shape" /><div className="person-shape"><span className="person-head"/><span className="person-body"/></div><span className="demo-label">{language === "fr" ? "Pieds au sol. Penchez-vous vers l’avant." : "Feet on the floor. Lean forward."}</span></div>
         <label className="helper-confirm"><input type="checkbox" checked={helper} onChange={(e) => setHelper(e.target.checked)} /><span className="checkmark">✓</span><span><b>{language === "fr" ? "Mon accompagnateur est prêt" : "My helper is ready"}</b><small>{language === "fr" ? "Il restera près de moi." : "They will stay nearby."}</small></span></label>
         <div className="symptom-row"><span>{language === "fr" ? "Arrêtez si vous avez :" : "Stop if you feel:"}</span><button>{language === "fr" ? "Douleur" : "Pain"}</button><button>{language === "fr" ? "Étourdissement" : "Dizziness"}</button></div>
@@ -469,6 +492,7 @@ function Session({ language, step, setStep, energy, setEnergy, cue, setCue, reco
         <h2>{language === "fr" ? "Demandez un verre d’eau." : "Ask for a glass of water."}</h2>
         <div className="mission-phrase"><span>“</span><strong>{language === "fr" ? "Je voudrais un verre d’eau, s’il vous plaît." : "I would like a glass of water, please."}</strong></div>
         <p>{language === "fr" ? "Parlez, montrez la phrase ou utilisez votre tableau. Toutes ces façons de communiquer sont valides." : "Speak, point to the phrase, or use your board. All of these ways to communicate are valid."}</p>
+        <ResearchLink language={language} label={language === "fr" ? "Communication fonctionnelle et conversation soutenue · recommandations canadiennes" : "Functional communication and supported conversation · Canadian guidelines"} href="https://www.strokebestpractices.ca/recommendations/stroke-rehabilitation-delivery/7-language-and-communication" />
         <button className="secondary-button wide-button" onClick={onBoard}>{language === "fr" ? "Ouvrir mon tableau de communication" : "Open my communication board"}</button>
         <button className="primary-button session-next" onClick={() => { onComplete(); next(); }}>{language === "fr" ? "Mission terminée" : "Mission complete"}<span>→</span></button>
       </>}
@@ -476,6 +500,8 @@ function Session({ language, step, setStep, energy, setEnergy, cue, setCue, reco
     </section>
   </div>;
 }
+
+function ResearchLink({ language, label, href }: { language: Language; label: string; href: string }) { return <a className="research-pill" href={href} target="_blank" rel="noreferrer"><span>↗</span><small>{language === "fr" ? "Fondé sur la recherche" : "Research-backed"}</small><b>{label}</b></a>; }
 
 function FamilyPortal({ language, tab, data, dataStatus, setData, setDataStatus }: { language: Language; tab: string; data: ProductData; dataStatus: "loading" | "saved" | "offline"; setData: Dispatch<SetStateAction<ProductData>>; setDataStatus: (status: "loading" | "saved" | "offline") => void }) {
   const [note, setNote] = useState("");
@@ -524,32 +550,10 @@ function FamilyPortal({ language, tab, data, dataStatus, setData, setDataStatus 
   </section>;
 }
 
-function ClinicianPortal({ language, tab, data, dataStatus }: { language: Language; tab: string; data: ProductData; dataStatus: "loading" | "saved" | "offline" }) {
-  if (tab === "program") return <section className="portal-page clinician-density"><PortalHeading eyebrow={language === "fr" ? "Programme actif" : "Active program"} title={language === "fr" ? "La séance de Salah" : "Salah’s session"} intro={language === "fr" ? "Ordre, indices et exigences d’assistance sont configurés par l’équipe clinique." : "Order, cues, and assistance requirements are configured by the clinical team."} status={dataStatus} language={language} /><div className="program-table card-surface"><div className="table-head"><span>#</span><span>{language === "fr" ? "Activité" : "Activity"}</span><span>{language === "fr" ? "Assistance" : "Assistance"}</span><span>{language === "fr" ? "Dose" : "Dose"}</span><span>{language === "fr" ? "Révision" : "Review"}</span></div>{(data.program.length ? data.program : fallbackProgram()).map((item) => <div className="table-row" key={item.assignment.id}><span className="order-chip">{item.assignment.orderIndex}</span><span><b>{language === "fr" ? item.exercise.titleFr : item.exercise.titleEn}</b><small>{item.exercise.domain}</small></span><span className={item.exercise.domain === "mobility" ? "assistance-chip warning" : "assistance-chip"}>{item.exercise.assistanceLevel}</span><span>{item.exercise.repetitions}</span><span>{item.exercise.reviewedAt}</span></div>)}</div><div className="clinical-boundary"><span>!</span><p><b>{language === "fr" ? "Progression mobilité protégée" : "Protected mobility progression"}</b><br />{language === "fr" ? "L’assistance, la durée debout et la difficulté d’équilibre ne peuvent être réduites automatiquement." : "Assistance, standing duration, and balance difficulty cannot be reduced automatically."}</p></div></section>;
-
-  if (tab === "results") return <section className="portal-page clinician-density"><PortalHeading eyebrow={language === "fr" ? "Résultats à domicile" : "At-home results"} title={language === "fr" ? "Indépendance et effort" : "Independence and effort"} intro={language === "fr" ? "Les résultats distinguent les réponses indépendantes, les indices utilisés et le transfert fonctionnel." : "Results distinguish independent responses, cues used, and functional transfer."} status={dataStatus} language={language} /><div className="results-layout"><div className="results-chart card-surface"><div className="chart-header"><div><p className="eyebrow">{language === "fr" ? "Dépendance aux indices" : "Cue dependence"}</p><h3>{language === "fr" ? "Moins d’aide au fil du temps" : "Less help over time"}</h3></div><span className="trend-chip">↗ {language === "fr" ? "Amélioration" : "Improving"}</span></div><div className="bar-chart"><ChartBar label="S1" value={32} /><ChartBar label="S2" value={46} /><ChartBar label="S3" value={58} /><ChartBar label="S4" value={72} current /></div><div className="chart-scale"><span>{language === "fr" ? "Modèle complet" : "Full model"}</span><span>{language === "fr" ? "Plus indépendant" : "More independent"}</span></div></div><div className="metric-stack"><Metric value={String(data.attempts.length || 8)} label={language === "fr" ? "séances complétées" : "sessions completed"} detail={language === "fr" ? "4 dernières semaines" : "last 4 weeks"} /><Metric value="3" label={language === "fr" ? "transferts fonctionnels" : "functional transfers"} detail={language === "fr" ? "signalés cette semaine" : "reported this week"} /><Metric value="3/5" label={language === "fr" ? "effort moyen" : "average effort"} detail={language === "fr" ? "gérable selon Salah" : "manageable for Salah"} /></div></div></section>;
-
-  if (tab === "recordings") return <section className="portal-page clinician-density"><PortalHeading eyebrow={language === "fr" ? "Révision autorisée" : "Authorized review"} title={language === "fr" ? "Enregistrements vocaux" : "Voice recordings"} intro={language === "fr" ? "Écoutez uniquement les tentatives que Salah a choisi d’enregistrer. Aucun score automatique n’est présenté comme une évaluation clinique." : "Listen only to attempts Salah chose to record. No automatic score is presented as a clinical assessment."} status={dataStatus} language={language} /><div className="recording-review-list">{data.mediaAssets.filter((asset) => asset.reviewStatus !== "deleted").length ? data.mediaAssets.filter((asset) => asset.reviewStatus !== "deleted").map((asset, index) => <div className="recording-review-card card-surface" key={asset.id}><div className="recording-order">{String(index + 1).padStart(2, "0")}</div><div className="recording-meta"><p className="eyebrow">{language === "fr" ? "Mot personnel · Café" : "Personal word · Coffee"}</p><h3>{language === "fr" ? "Tentative de Salah" : "Salah’s attempt"}</h3><small>{new Date(asset.createdAt).toLocaleString(language === "fr" ? "fr-CA" : "en-CA")} · {asset.durationMs ? `${Math.max(1, Math.round(asset.durationMs / 1000))} s` : "—"}</small></div><audio controls preload="none" src={`/api/media?id=${encodeURIComponent(asset.id)}`} aria-label={language === "fr" ? "Lire l’enregistrement" : "Play recording"} /><div className="review-actions"><span className={asset.reviewStatus === "new" ? "review-new" : "review-done"}>{asset.reviewStatus === "new" ? (language === "fr" ? "Nouveau" : "New") : (language === "fr" ? "Révisé" : "Reviewed")}</span><button>{language === "fr" ? "Ajouter une note" : "Add note"}</button></div></div>) : <div className="card-surface"><EmptyState text={language === "fr" ? "Aucun enregistrement autorisé. Les tentatives apparaîtront ici après le consentement et l’enregistrement de Salah." : "No authorized recordings. Attempts will appear here after Salah consents and records one."} /></div>}</div><div className="clinical-boundary"><span>i</span><p><b>{language === "fr" ? "Interprétation clinique requise" : "Clinical interpretation required"}</b><br />{language === "fr" ? "La lecture et la comparaison soutiennent votre jugement; Élan ne déclare pas une prononciation correcte ou incorrecte." : "Playback and comparison support your judgment; Élan does not declare pronunciation correct or incorrect."}</p></div></section>;
-
-  if (tab === "observations") return <section className="portal-page clinician-density"><PortalHeading eyebrow={language === "fr" ? "Partenaires et domicile" : "Partners and home"} title={language === "fr" ? "Observations à réviser" : "Observations to review"} intro={language === "fr" ? "Les observations familiales restent distinctes des mesures cliniques jusqu’à votre révision." : "Family observations remain separate from clinical measures until you review them."} status={dataStatus} language={language} /><div className="review-list card-surface">{data.observations.length ? data.observations.map((observation) => <div className="review-row" key={observation.id}><span className={`category-dot ${observation.category}`} /><div><p className="eyebrow">{observation.category} · {observation.authorName}</p><b>{observation.note}</b><small>{new Date(observation.createdAt).toLocaleDateString(language === "fr" ? "fr-CA" : "en-CA")}</small></div><button>{language === "fr" ? "Réviser" : "Review"}</button></div>) : <EmptyState text={language === "fr" ? "Aucune nouvelle observation. Les notes de Sylvie apparaîtront ici." : "No new observations. Sylvie’s notes will appear here."} />}</div></section>;
-
-  return <section className="portal-page clinician-density">
-    <PortalHeading eyebrow={language === "fr" ? "Patient actif · SAL-0042" : "Active patient · SAL-0042"} title={language === "fr" ? "Plan interdisciplinaire" : "Interdisciplinary plan"} intro={data.profile?.primaryGoal ?? ""} status={dataStatus} language={language} />
-    <div className="patient-overview card-surface"><div className="patient-avatar">SL</div><div className="patient-summary"><h2>Salah L.</h2><p>{language === "fr" ? "Aphasie acquise · Français · Programme à domicile" : "Acquired aphasia · French · Home program"}</p><div className="patient-tags"><span>{language === "fr" ? "Tablette" : "Tablet"}</span><span>{language === "fr" ? "Partenaire connecté" : "Connected partner"}</span><span className="warning">{language === "fr" ? "Supervision debout" : "Standing supervision"}</span></div></div><div className="next-review"><p className="eyebrow">{language === "fr" ? "Prochaine révision" : "Next review"}</p><strong>16</strong><span>{language === "fr" ? "JUILLET" : "JULY"}</span></div></div>
-    <div className="goal-grid">{data.goals.map((goal) => <div className="goal-card" key={goal.id}><span className={`goal-domain ${goal.domain}`}>{goal.domain === "communication" ? "C" : goal.domain === "mobility" ? "M" : "V"}</span><p className="eyebrow">{goal.domain}</p><h3>{goal.title}</h3><p>{goal.progressNote}</p><div className="goal-footer"><span className="active-status">{language === "fr" ? "Actif" : "Active"}</span><small>{language === "fr" ? "Révision" : "Review"} {goal.reviewDate.slice(5).replace("-", "/")}</small></div></div>)}</div>
-  </section>;
-}
 
 function PortalHeading({ eyebrow, title, intro, status, language }: { eyebrow: string; title: string; intro: string; status: "loading" | "saved" | "offline"; language: Language }) { return <div className="portal-heading"><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{intro}</p></div><span className={`data-status ${status}`}><i />{status === "loading" ? (language === "fr" ? "Chargement" : "Loading") : status === "saved" ? (language === "fr" ? "Données synchronisées" : "Data synced") : (language === "fr" ? "Mode hors ligne" : "Offline mode")}</span></div>; }
 function GuidanceCard({ number, title, text }: { number: string; title: string; text: string }) { return <div className="guidance-card"><span>{number}</span><h3>{title}</h3><p>{text}</p></div>; }
 function EmptyState({ text }: { text: string }) { return <div className="empty-state"><span>· · ·</span><p>{text}</p></div>; }
-function ChartBar({ label, value, current }: { label: string; value: number; current?: boolean }) { return <div className="chart-bar"><div><span style={{ height: `${value}%` }} className={current ? "current" : ""}><b>{value}%</b></span></div><small>{label}</small></div>; }
-function Metric({ value, label, detail }: { value: string; label: string; detail: string }) { return <div className="metric-card"><strong>{value}</strong><b>{label}</b><small>{detail}</small></div>; }
-function fallbackProgram(): ProductData["program"] { return [
-  { assignment: { id: "a1", status: "assigned", orderIndex: 1 }, exercise: { id: "e1", domain: "communication", titleFr: "Mes mots importants", titleEn: "My important words", assistanceLevel: "Indices gradués", repetitions: "3 mots", clinicianName: "Marie-Claude", reviewedAt: "2026-07-10" } },
-  { assignment: { id: "a2", status: "assigned", orderIndex: 2 }, exercise: { id: "e2", domain: "mobility", titleFr: "Se lever d’une chaise", titleEn: "Stand up from a chair", assistanceLevel: "Quelqu’un à proximité", repetitions: "5 répétitions", clinicianName: "Karim B.", reviewedAt: "2026-07-11" } },
-  { assignment: { id: "a3", status: "assigned", orderIndex: 3 }, exercise: { id: "e3", domain: "participation", titleFr: "Mission dans la cuisine", titleEn: "Kitchen mission", assistanceLevel: "Partenaire disponible", repetitions: "1 mission", clinicianName: "Marie-Claude", reviewedAt: "2026-07-10" } },
-]; }
 
 function PrivacyCenter({ language, data, setData, onConsent, dataStatus }: { language: Language; data: ProductData; setData: Dispatch<SetStateAction<ProductData>>; onConsent: (granted: boolean) => void; dataStatus: "loading" | "saved" | "offline" }) {
   const voiceConsent = data.consents.some((consent) => consent.consentType === "voice_recording" && consent.granted);
@@ -575,10 +579,9 @@ function Progress({ language }: { language: Language }) {
 function ProgressItem({ letter, title, detail }: { letter: string; title: string; detail: string }) { return <div className="progress-item"><span>{letter}</span><div><b>{title}</b><small>{detail}</small></div><strong>✓</strong></div>; }
 
 function Practice({ language, onStart }: { language: Language; onStart: () => void }) {
-  return <section className="content-view"><p className="eyebrow">{language === "fr" ? "Bibliothèque personnelle" : "Personal library"}</p><h2>{language === "fr" ? "Pratiquer à votre rythme" : "Practice at your pace"}</h2><p className="view-intro">{language === "fr" ? "Contenu choisi avec votre équipe de soins." : "Content chosen with your care team."}</p><div className="library-grid"><button onClick={onStart}><span className="library-mark plum">M</span><b>{language === "fr" ? "Mes mots" : "My words"}</b><small>{language === "fr" ? "12 mots personnels" : "12 personal words"}</small></button><button><span className="library-mark blue">P</span><b>{language === "fr" ? "Mes phrases" : "My phrases"}</b><small>{language === "fr" ? "4 situations utiles" : "4 useful situations"}</small></button><button><span className="library-mark gold">B</span><b>{language === "fr" ? "Bouger" : "Move"}</b><small>{language === "fr" ? "2 exercices approuvés" : "2 approved exercises"}</small></button></div></section>;
+  return <section className="content-view"><p className="eyebrow">{language === "fr" ? "Bibliothèque personnelle" : "Personal library"}</p><h2>{language === "fr" ? "Pratiquer à votre rythme" : "Practice at your pace"}</h2><p className="view-intro">{language === "fr" ? "Contenu fondé sur la recherche, choisi et dosé avec votre équipe de soins." : "Research-backed content selected and dosed with your care team."}</p><div className="library-grid"><button onClick={onStart}><span className="library-mark plum">M</span><b>{language === "fr" ? "Mes mots" : "My words"}</b><small>{language === "fr" ? "12 mots personnels · indices gradués" : "12 personal words · graded cues"}</small></button><button><span className="library-mark blue">P</span><b>{language === "fr" ? "Mes phrases" : "My phrases"}</b><small>{language === "fr" ? "4 scripts fonctionnels" : "4 functional scripts"}</small></button><button><span className="library-mark gold">B</span><b>{language === "fr" ? "Bouger" : "Move"}</b><small>{language === "fr" ? "2 exercices approuvés · supervision protégée" : "2 approved exercises · protected supervision"}</small></button></div></section>;
 }
 
-function SimpleView({ language, view, onBoard }: { language: Language; view: View; onBoard: () => void }) {
-  const isHelp = view === "help";
-  return <section className="content-view"><p className="eyebrow">Élan</p><h2>{isHelp ? (language === "fr" ? "Vous n’êtes jamais seul." : "You are never alone.") : (language === "fr" ? "Communiquez à votre façon." : "Communicate your way.")}</h2><p className="view-intro">{isHelp ? (language === "fr" ? "Demandez de l’aide, écoutez les instructions ou contactez votre équipe." : "Ask for help, listen to instructions, or contact your team.") : (language === "fr" ? "Parler n’est qu’une façon de se faire comprendre." : "Speaking is only one way to be understood.")}</p><div className="support-cards"><button onClick={onBoard}><span>•••</span><b>{language === "fr" ? "Tableau de communication" : "Communication board"}</b><small>{language === "fr" ? "Messages essentiels, même hors ligne" : "Essential messages, even offline"}</small></button><button><span>i</span><b>{language === "fr" ? "Appeler un proche" : "Call a family member"}</b><small>{language === "fr" ? "Sylvie est votre contact principal" : "Sylvie is your primary contact"}</small></button></div></section>;
+function SimpleView({ language, onBoard }: { language: Language; view: View; onBoard: () => void }) {
+  return <section className="content-view"><p className="eyebrow">Élan</p><h2>{language === "fr" ? "Communiquez à votre façon." : "Communicate your way."}</h2><p className="view-intro">{language === "fr" ? "Parler n’est qu’une façon de se faire comprendre." : "Speaking is only one way to be understood."}</p><div className="support-cards"><button onClick={onBoard}><span>•••</span><b>{language === "fr" ? "Tableau de communication" : "Communication board"}</b><small>{language === "fr" ? "Messages essentiels, même hors ligne" : "Essential messages, even offline"}</small></button><button><span>i</span><b>{language === "fr" ? "Appeler un proche" : "Call a family member"}</b><small>{language === "fr" ? "Sylvie est votre contact principal" : "Sylvie is your primary contact"}</small></button></div></section>;
 }

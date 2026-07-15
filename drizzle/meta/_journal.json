@@ -15,6 +15,13 @@
       "when": 1784074630388,
       "tag": "0001_pretty_tattoo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784125245791,
+      "tag": "0002_outgoing_luckman",
+      "breakpoints": true
     }
   ]
 }
