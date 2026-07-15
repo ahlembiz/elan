@@ -134,6 +134,7 @@ export const auditEvents = sqliteTable("audit_events", {
 export const exerciseLibrary = sqliteTable("exercise_library", {
   id: text("id").primaryKey(),
   domain: text("domain", { enum: ["communication", "mobility"] }).notNull(),
+  theme: text("theme").notNull().default("general"),
   titleFr: text("title_fr").notNull(),
   titleEn: text("title_en").notNull(),
   summaryFr: text("summary_fr").notNull(),
@@ -147,7 +148,26 @@ export const exerciseLibrary = sqliteTable("exercise_library", {
   safetyClass: text("safety_class", { enum: ["standard", "supervised", "clinical_review"] }).notNull(),
   reviewRequired: integer("review_required", { mode: "boolean" }).notNull().default(true),
   difficulty: integer("difficulty").notNull().default(1),
+  effortLevel: integer("effort_level").notNull().default(1),
+  durationMinutes: integer("duration_minutes").notNull().default(10),
+  stage: text("stage", { enum: ["foundation", "build", "challenge"] }).notNull().default("foundation"),
+  equipmentFr: text("equipment_fr").notNull().default(""),
+  equipmentEn: text("equipment_en").notNull().default(""),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const planSessions = sqliteTable("plan_sessions", {
+  id: text("id").primaryKey(),
+  patientId: text("patient_id").notNull().references(() => patientProfiles.id),
+  titleFr: text("title_fr").notNull(),
+  titleEn: text("title_en").notNull(),
+  targetDuration: integer("target_duration").notNull(),
+  effortLevel: integer("effort_level").notNull(),
+  status: text("status", { enum: ["active", "completed", "paused"] }).notNull().default("active"),
+  createdByRole: text("created_by_role", { enum: ["patient", "family", "admin"] }).notNull(),
+  createdByName: text("created_by_name").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const planEntries = sqliteTable("plan_entries", {
@@ -161,13 +181,14 @@ export const planEntries = sqliteTable("plan_entries", {
   scheduledAt: text("scheduled_at"),
   status: text("status", { enum: ["active", "completed", "paused"] }).notNull().default("active"),
   source: text("source", { enum: ["curated", "manual"] }).notNull().default("manual"),
-  createdByRole: text("created_by_role", { enum: ["patient", "admin"] }).notNull(),
+  createdByRole: text("created_by_role", { enum: ["patient", "family", "admin"] }).notNull(),
   createdByName: text("created_by_name").notNull(),
   evidenceTitle: text("evidence_title"),
   evidenceUrl: text("evidence_url"),
   safetyClass: text("safety_class", { enum: ["standard", "supervised", "clinical_review"] }).notNull().default("standard"),
   points: integer("points").notNull().default(10),
   exerciseLibraryId: text("exercise_library_id").references(() => exerciseLibrary.id),
+  sessionId: text("session_id").references(() => planSessions.id),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
