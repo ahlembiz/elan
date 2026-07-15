@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
 type Language = "fr" | "en";
@@ -14,6 +14,8 @@ type ProductData = {
   program: Array<{ assignment: { id: string; status: string; orderIndex: number }; exercise: { id: string; domain: string; titleFr: string; titleEn: string; assistanceLevel: string; repetitions: string; clinicianName: string; reviewedAt: string } }>;
   attempts: Array<{ id: number; supportLevel: number; effort: number; confidence: number; completedAt: string }>;
   observations: Array<{ id: number; authorName: string; category: string; note: string; status: string; createdAt: string }>;
+  consents: Array<{ id: string; consentType: string; granted: boolean; version: string; updatedAt: string }>;
+  mediaAssets: Array<{ id: string; kind: string; contentType: string; sizeBytes: number; durationMs: number | null; recordedBy: string; reviewStatus: string; createdAt: string }>;
 };
 
 const fallbackData: ProductData = {
@@ -23,7 +25,7 @@ const fallbackData: ProductData = {
     { id: "mobility", domain: "mobility", title: "Se lever d’une chaise avec supervision", progressNote: "5 répétitions complétées à effort modéré", reviewDate: "2026-07-18" },
     { id: "participation", domain: "participation", title: "Demander un verre d’eau dans la cuisine", progressNote: "Mission réussie 3 fois cette semaine", reviewDate: "2026-07-20" },
   ],
-  program: [], attempts: [], observations: [],
+  program: [], attempts: [], observations: [], consents: [], mediaAssets: [],
 };
 
 const copy = {
@@ -107,8 +109,14 @@ export default function ÉlanApp() {
   const [energy, setEnergy] = useState<number | null>(null);
   const [cue, setCue] = useState(0);
   const [recording, setRecording] = useState(false);
+  const [recordingStatus, setRecordingStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [consentOpen, setConsentOpen] = useState(false);
   const [helper, setHelper] = useState(false);
   const [spoken, setSpoken] = useState<string | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const recordingStartedRef = useRef(0);
   const t = copy[language];
 
   useEffect(() => {
@@ -129,6 +137,7 @@ export default function ÉlanApp() {
       { id: "overview", label: language === "fr" ? "Dossier patient" : "Patient record", mark: "D" },
       { id: "program", label: language === "fr" ? "Programme" : "Program", mark: "P" },
       { id: "results", label: language === "fr" ? "Résultats" : "Results", mark: "R" },
+      { id: "recordings", label: language === "fr" ? "Enregistrements" : "Recordings", mark: "E" },
       { id: "observations", label: language === "fr" ? "Observations" : "Observations", mark: "O" },
     ];
     return [
@@ -167,6 +176,67 @@ export default function ÉlanApp() {
       setDataStatus("saved");
     } catch {
       setDataStatus("offline");
+    }
+  };
+
+  const voiceConsent = productData.consents.some((consent) => consent.consentType === "voice_recording" && consent.granted);
+
+  const updateConsent = async (granted: boolean) => {
+    try {
+      const response = await fetch("/api/consent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ consentType: "voice_recording", granted }) });
+      if (!response.ok) throw new Error();
+      const { consent } = await response.json();
+      setProductData((current) => ({ ...current, consents: [consent, ...current.consents.filter((item) => item.consentType !== "voice_recording")] }));
+      setDataStatus("saved");
+      setConsentOpen(false);
+    } catch {
+      setDataStatus("offline");
+    }
+  };
+
+  const toggleRecording = async () => {
+    if (recording) {
+      recorderRef.current?.stop();
+      setRecording(false);
+      return;
+    }
+    if (!voiceConsent) {
+      setConsentOpen(true);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      recorderRef.current = recorder;
+      streamRef.current = stream;
+      chunksRef.current = [];
+      recordingStartedRef.current = Date.now();
+      recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data); };
+      recorder.onstop = async () => {
+        const durationMs = Date.now() - recordingStartedRef.current;
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        setRecordingStatus("saving");
+        const form = new FormData();
+        form.append("audio", blob, "elan-recording.webm");
+        form.append("assignmentId", "assignment-words");
+        form.append("durationMs", String(durationMs));
+        try {
+          const response = await fetch("/api/media", { method: "POST", body: form });
+          if (!response.ok) throw new Error();
+          const { asset } = await response.json();
+          setProductData((current) => ({ ...current, mediaAssets: [asset, ...current.mediaAssets] }));
+          setRecordingStatus("saved");
+          setDataStatus("saved");
+        } catch {
+          setRecordingStatus("error");
+        }
+      };
+      recorder.start();
+      setRecordingStatus("idle");
+      setRecording(true);
+    } catch {
+      setRecordingStatus("error");
     }
   };
 
@@ -234,7 +304,8 @@ export default function ÉlanApp() {
             cue={cue}
             setCue={setCue}
             recording={recording}
-            setRecording={setRecording}
+            onRecord={toggleRecording}
+            recordingStatus={recordingStatus}
             helper={helper}
             setHelper={setHelper}
             onClose={() => setSessionOpen(false)}
@@ -251,6 +322,8 @@ export default function ÉlanApp() {
           <Progress language={language} />
         ) : view === "practice" ? (
           <Practice language={language} onStart={beginSession} />
+        ) : view === "help" ? (
+          <PrivacyCenter language={language} data={productData} setData={setProductData} onConsent={updateConsent} dataStatus={dataStatus} />
         ) : (
           <SimpleView language={language} view={view} onBoard={() => setBoardOpen(true)} />
         )}
@@ -281,6 +354,19 @@ export default function ÉlanApp() {
               ))}
             </div>
             {spoken && <div className="spoken-bar" aria-live="polite"><span>)))</span> {spoken}</div>}
+          </section>
+        </div>
+      )}
+
+      {consentOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="consent-modal" role="dialog" aria-modal="true" aria-labelledby="consent-title">
+            <div className="consent-symbol">●</div>
+            <p className="eyebrow">{language === "fr" ? "Votre choix" : "Your choice"}</p>
+            <h2 id="consent-title">{language === "fr" ? "Autoriser les enregistrements vocaux?" : "Allow voice recordings?"}</h2>
+            <p>{language === "fr" ? "Élan enregistrera votre voix seulement lorsque vous appuyez sur Enregistrer. Les enregistrements servent à vous réécouter et peuvent être révisés par votre orthophoniste autorisée." : "Élan records your voice only when you press Record. Recordings are for playback and may be reviewed by your authorized speech therapist."}</p>
+            <div className="consent-facts"><span><b>{language === "fr" ? "Facultatif" : "Optional"}</b><small>{language === "fr" ? "Vous pouvez pratiquer sans enregistrer." : "You can practise without recording."}</small></span><span><b>{language === "fr" ? "Révocable" : "Reversible"}</b><small>{language === "fr" ? "Changez ce choix dans Aide et confidentialité." : "Change this choice in Help and privacy."}</small></span><span><b>{language === "fr" ? "Privé" : "Private"}</b><small>{language === "fr" ? "Aucun usage pour améliorer un modèle." : "Not used for model improvement."}</small></span></div>
+            <div className="consent-actions"><button className="secondary-button" onClick={() => { setConsentOpen(false); updateConsent(false); }}>{language === "fr" ? "Non, continuer sans" : "No, continue without"}</button><button className="portal-primary" onClick={() => updateConsent(true)}>{language === "fr" ? "Oui, j’autorise" : "Yes, I consent"}</button></div>
           </section>
         </div>
       )}
@@ -342,7 +428,7 @@ function Activity({ index, tone, title, subtitle, label, helper }: { index: stri
   return <div className="activity-row"><div className={`activity-index ${tone}`}>{index}</div><div className="activity-copy"><small>{label}</small><h4>{title}</h4><p>{subtitle}</p>{helper && <span className="helper-label"><span>!</span>{helper}</span>}</div><span className="row-arrow">›</span></div>;
 }
 
-function Session({ language, step, setStep, energy, setEnergy, cue, setCue, recording, setRecording, helper, setHelper, onClose, onBoard, onComplete }: { language: Language; step: SessionStep; setStep: (step: SessionStep) => void; energy: number | null; setEnergy: (n: number) => void; cue: number; setCue: (n: number) => void; recording: boolean; setRecording: (n: boolean) => void; helper: boolean; setHelper: (n: boolean) => void; onClose: () => void; onBoard: () => void; onComplete: () => void }) {
+function Session({ language, step, setStep, energy, setEnergy, cue, setCue, recording, onRecord, recordingStatus, helper, setHelper, onClose, onBoard, onComplete }: { language: Language; step: SessionStep; setStep: (step: SessionStep) => void; energy: number | null; setEnergy: (n: number) => void; cue: number; setCue: (n: number) => void; recording: boolean; onRecord: () => void; recordingStatus: "idle" | "saving" | "saved" | "error"; helper: boolean; setHelper: (n: boolean) => void; onClose: () => void; onBoard: () => void; onComplete: () => void }) {
   const steps: SessionStep[] = ["checkin", "words", "movement", "mission", "complete"];
   const current = steps.indexOf(step);
   const next = () => setStep(steps[Math.min(current + 1, steps.length - 1)]);
@@ -364,7 +450,8 @@ function Session({ language, step, setStep, energy, setEnergy, cue, setCue, reco
         <p className="eyebrow">{language === "fr" ? "Mes mots importants · 1 sur 3" : "My important words · 1 of 3"}</p>
         <h2>{language === "fr" ? "Dites ce mot à votre façon." : "Say this word in your own way."}</h2>
         <div className="word-card"><div className="word-object"><span>☕</span></div><strong>{cue >= 2 ? (language === "fr" ? "Café" : "Coffee") : "?"}</strong>{cue >= 1 && <p>{language === "fr" ? "C’est une boisson chaude." : "It is a hot drink."}</p>}{cue >= 3 && <div className="syllables">CA · FÉ</div>}</div>
-        <div className="word-actions"><button className="secondary-button" onClick={() => setCue(Math.min(cue + 1, 3))}>+ {language === "fr" ? "Un indice" : "A cue"}</button><button className={recording ? "record-button recording" : "record-button"} onClick={() => setRecording(!recording)}><span />{recording ? (language === "fr" ? "Arrêter" : "Stop") : (language === "fr" ? "Enregistrer" : "Record")}</button></div>
+        <div className="word-actions"><button className="secondary-button" onClick={() => setCue(Math.min(cue + 1, 3))}>+ {language === "fr" ? "Un indice" : "A cue"}</button><button className={recording ? "record-button recording" : "record-button"} onClick={onRecord}><span />{recording ? (language === "fr" ? "Arrêter" : "Stop") : (language === "fr" ? "Enregistrer" : "Record")}</button></div>
+        {recordingStatus !== "idle" && <p className={`recording-status ${recordingStatus}`} role="status">{recordingStatus === "saving" ? (language === "fr" ? "Enregistrement sécurisé…" : "Securing recording…") : recordingStatus === "saved" ? (language === "fr" ? "✓ Enregistrement privé sauvegardé." : "✓ Private recording saved.") : (language === "fr" ? "L’enregistrement n’a pas pu être sauvegardé. Vous pouvez continuer sans enregistrer." : "The recording could not be saved. You can continue without recording.")}</p>}
         <p className="reassurance">{language === "fr" ? "Vous pouvez montrer, écrire ou dire le mot. Il n’y a pas d’échec ici." : "You may point, write, or say the word. There is no failure here."}</p>
         <button className="primary-button session-next" onClick={next}>{language === "fr" ? "J’ai terminé" : "I’m done"}<span>→</span></button>
       </>}
@@ -442,6 +529,8 @@ function ClinicianPortal({ language, tab, data, dataStatus }: { language: Langua
 
   if (tab === "results") return <section className="portal-page clinician-density"><PortalHeading eyebrow={language === "fr" ? "Résultats à domicile" : "At-home results"} title={language === "fr" ? "Indépendance et effort" : "Independence and effort"} intro={language === "fr" ? "Les résultats distinguent les réponses indépendantes, les indices utilisés et le transfert fonctionnel." : "Results distinguish independent responses, cues used, and functional transfer."} status={dataStatus} language={language} /><div className="results-layout"><div className="results-chart card-surface"><div className="chart-header"><div><p className="eyebrow">{language === "fr" ? "Dépendance aux indices" : "Cue dependence"}</p><h3>{language === "fr" ? "Moins d’aide au fil du temps" : "Less help over time"}</h3></div><span className="trend-chip">↗ {language === "fr" ? "Amélioration" : "Improving"}</span></div><div className="bar-chart"><ChartBar label="S1" value={32} /><ChartBar label="S2" value={46} /><ChartBar label="S3" value={58} /><ChartBar label="S4" value={72} current /></div><div className="chart-scale"><span>{language === "fr" ? "Modèle complet" : "Full model"}</span><span>{language === "fr" ? "Plus indépendant" : "More independent"}</span></div></div><div className="metric-stack"><Metric value={String(data.attempts.length || 8)} label={language === "fr" ? "séances complétées" : "sessions completed"} detail={language === "fr" ? "4 dernières semaines" : "last 4 weeks"} /><Metric value="3" label={language === "fr" ? "transferts fonctionnels" : "functional transfers"} detail={language === "fr" ? "signalés cette semaine" : "reported this week"} /><Metric value="3/5" label={language === "fr" ? "effort moyen" : "average effort"} detail={language === "fr" ? "gérable selon Salah" : "manageable for Salah"} /></div></div></section>;
 
+  if (tab === "recordings") return <section className="portal-page clinician-density"><PortalHeading eyebrow={language === "fr" ? "Révision autorisée" : "Authorized review"} title={language === "fr" ? "Enregistrements vocaux" : "Voice recordings"} intro={language === "fr" ? "Écoutez uniquement les tentatives que Salah a choisi d’enregistrer. Aucun score automatique n’est présenté comme une évaluation clinique." : "Listen only to attempts Salah chose to record. No automatic score is presented as a clinical assessment."} status={dataStatus} language={language} /><div className="recording-review-list">{data.mediaAssets.filter((asset) => asset.reviewStatus !== "deleted").length ? data.mediaAssets.filter((asset) => asset.reviewStatus !== "deleted").map((asset, index) => <div className="recording-review-card card-surface" key={asset.id}><div className="recording-order">{String(index + 1).padStart(2, "0")}</div><div className="recording-meta"><p className="eyebrow">{language === "fr" ? "Mot personnel · Café" : "Personal word · Coffee"}</p><h3>{language === "fr" ? "Tentative de Salah" : "Salah’s attempt"}</h3><small>{new Date(asset.createdAt).toLocaleString(language === "fr" ? "fr-CA" : "en-CA")} · {asset.durationMs ? `${Math.max(1, Math.round(asset.durationMs / 1000))} s` : "—"}</small></div><audio controls preload="none" src={`/api/media?id=${encodeURIComponent(asset.id)}`} aria-label={language === "fr" ? "Lire l’enregistrement" : "Play recording"} /><div className="review-actions"><span className={asset.reviewStatus === "new" ? "review-new" : "review-done"}>{asset.reviewStatus === "new" ? (language === "fr" ? "Nouveau" : "New") : (language === "fr" ? "Révisé" : "Reviewed")}</span><button>{language === "fr" ? "Ajouter une note" : "Add note"}</button></div></div>) : <div className="card-surface"><EmptyState text={language === "fr" ? "Aucun enregistrement autorisé. Les tentatives apparaîtront ici après le consentement et l’enregistrement de Salah." : "No authorized recordings. Attempts will appear here after Salah consents and records one."} /></div>}</div><div className="clinical-boundary"><span>i</span><p><b>{language === "fr" ? "Interprétation clinique requise" : "Clinical interpretation required"}</b><br />{language === "fr" ? "La lecture et la comparaison soutiennent votre jugement; Élan ne déclare pas une prononciation correcte ou incorrecte." : "Playback and comparison support your judgment; Élan does not declare pronunciation correct or incorrect."}</p></div></section>;
+
   if (tab === "observations") return <section className="portal-page clinician-density"><PortalHeading eyebrow={language === "fr" ? "Partenaires et domicile" : "Partners and home"} title={language === "fr" ? "Observations à réviser" : "Observations to review"} intro={language === "fr" ? "Les observations familiales restent distinctes des mesures cliniques jusqu’à votre révision." : "Family observations remain separate from clinical measures until you review them."} status={dataStatus} language={language} /><div className="review-list card-surface">{data.observations.length ? data.observations.map((observation) => <div className="review-row" key={observation.id}><span className={`category-dot ${observation.category}`} /><div><p className="eyebrow">{observation.category} · {observation.authorName}</p><b>{observation.note}</b><small>{new Date(observation.createdAt).toLocaleDateString(language === "fr" ? "fr-CA" : "en-CA")}</small></div><button>{language === "fr" ? "Réviser" : "Review"}</button></div>) : <EmptyState text={language === "fr" ? "Aucune nouvelle observation. Les notes de Sylvie apparaîtront ici." : "No new observations. Sylvie’s notes will appear here."} />}</div></section>;
 
   return <section className="portal-page clinician-density">
@@ -461,6 +550,23 @@ function fallbackProgram(): ProductData["program"] { return [
   { assignment: { id: "a2", status: "assigned", orderIndex: 2 }, exercise: { id: "e2", domain: "mobility", titleFr: "Se lever d’une chaise", titleEn: "Stand up from a chair", assistanceLevel: "Quelqu’un à proximité", repetitions: "5 répétitions", clinicianName: "Karim B.", reviewedAt: "2026-07-11" } },
   { assignment: { id: "a3", status: "assigned", orderIndex: 3 }, exercise: { id: "e3", domain: "participation", titleFr: "Mission dans la cuisine", titleEn: "Kitchen mission", assistanceLevel: "Partenaire disponible", repetitions: "1 mission", clinicianName: "Marie-Claude", reviewedAt: "2026-07-10" } },
 ]; }
+
+function PrivacyCenter({ language, data, setData, onConsent, dataStatus }: { language: Language; data: ProductData; setData: Dispatch<SetStateAction<ProductData>>; onConsent: (granted: boolean) => void; dataStatus: "loading" | "saved" | "offline" }) {
+  const voiceConsent = data.consents.some((consent) => consent.consentType === "voice_recording" && consent.granted);
+  const visibleRecordings = data.mediaAssets.filter((asset) => asset.reviewStatus !== "deleted");
+  const deleteRecording = async (id: string) => {
+    const response = await fetch(`/api/media?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (response.ok) setData((current) => ({ ...current, mediaAssets: current.mediaAssets.map((asset) => asset.id === id ? { ...asset, reviewStatus: "deleted" } : asset) }));
+  };
+  return <section className="portal-page privacy-page">
+    <PortalHeading eyebrow={language === "fr" ? "Aide et confidentialité" : "Help and privacy"} title={language === "fr" ? "Vos choix restent les vôtres" : "Your choices remain yours"} intro={language === "fr" ? "Vous pouvez modifier les autorisations facultatives sans perdre l’accès à vos exercices." : "You can change optional permissions without losing access to your exercises."} status={dataStatus} language={language} />
+    <div className="privacy-layout">
+      <div className="privacy-consents card-surface"><p className="eyebrow">{language === "fr" ? "Autorisations" : "Permissions"}</p><h3>{language === "fr" ? "Enregistrements vocaux" : "Voice recordings"}</h3><p>{language === "fr" ? "Permet de sauvegarder vos tentatives et de les partager avec votre orthophoniste autorisée." : "Allows your attempts to be saved and shared with your authorized speech therapist."}</p><div className="consent-choice"><span className={voiceConsent ? "consent-on" : "consent-off"}><i />{voiceConsent ? (language === "fr" ? "Autorisé" : "Allowed") : (language === "fr" ? "Non autorisé" : "Not allowed")}</span><button onClick={() => onConsent(!voiceConsent)}>{voiceConsent ? (language === "fr" ? "Retirer l’autorisation" : "Withdraw permission") : (language === "fr" ? "Autoriser" : "Allow")}</button></div><div className="consent-divider" /><h3>{language === "fr" ? "Amélioration des modèles" : "Model improvement"}</h3><p>{language === "fr" ? "Désactivé. Vos enregistrements ne servent pas à entraîner ou améliorer un modèle." : "Off. Your recordings are not used to train or improve a model."}</p><span className="consent-off"><i />{language === "fr" ? "Non autorisé" : "Not allowed"}</span></div>
+      <div className="privacy-recordings card-surface"><div className="privacy-list-head"><div><p className="eyebrow">{language === "fr" ? "Vos données" : "Your data"}</p><h3>{language === "fr" ? "Enregistrements sauvegardés" : "Saved recordings"}</h3></div><span>{visibleRecordings.length}</span></div>{visibleRecordings.length ? visibleRecordings.map((asset) => <div className="patient-recording-row" key={asset.id}><audio className="patient-audio" controls preload="none" src={`/api/media?id=${encodeURIComponent(asset.id)}`} aria-label={language === "fr" ? "Écouter votre enregistrement" : "Play your recording"} /><div><b>{language === "fr" ? "Mot personnel · Café" : "Personal word · Coffee"}</b><small>{new Date(asset.createdAt).toLocaleDateString(language === "fr" ? "fr-CA" : "en-CA")} · {asset.durationMs ? `${Math.max(1, Math.round(asset.durationMs / 1000))} s` : "—"}</small></div><button className="delete-link" onClick={() => deleteRecording(asset.id)}>{language === "fr" ? "Supprimer" : "Delete"}</button></div>) : <EmptyState text={language === "fr" ? "Aucun enregistrement sauvegardé." : "No saved recordings."} />}</div>
+    </div>
+    <div className="privacy-note"><span>i</span><p>{language === "fr" ? "Pour obtenir une copie complète de vos données ou retirer votre consentement général au programme, contactez votre clinique. Les actions liées aux données sont consignées pour protéger votre dossier." : "To request a complete copy of your data or withdraw general program consent, contact your clinic. Data actions are logged to protect your record."}</p></div>
+  </section>;
+}
 
 function Progress({ language }: { language: Language }) {
   return <section className="content-view"><p className="eyebrow">{language === "fr" ? "Votre chemin" : "Your journey"}</p><h2>{language === "fr" ? "Ce qui devient plus facile" : "What is becoming easier"}</h2><p className="view-intro">{language === "fr" ? "Vos progrès sont comparés à vos propres expériences, jamais à celles des autres." : "Your progress is compared with your own experience, never with anyone else’s."}</p><div className="progress-grid"><div className="progress-feature"><span className="progress-number">5</span><h3>{language === "fr" ? "mots personnels demandent moins d’aide" : "personal words need less help"}</h3><div className="support-track"><span style={{width:"74%"}} /></div><small>{language === "fr" ? "Depuis quatre semaines" : "Over four weeks"}</small></div><div className="progress-list"><ProgressItem letter="T" title={language === "fr" ? "Script du téléphone" : "Telephone script"} detail={language === "fr" ? "Utilisé avec un seul indice" : "Used with one cue"} /><ProgressItem letter="C" title={language === "fr" ? "Mission dans la cuisine" : "Kitchen mission"} detail={language === "fr" ? "Réussie 3 fois cette semaine" : "Completed 3 times this week"} /><ProgressItem letter="M" title={language === "fr" ? "Se lever d’une chaise" : "Stand up from a chair"} detail={language === "fr" ? "Pratiqué avec supervision" : "Practised with supervision"} /></div></div></section>;

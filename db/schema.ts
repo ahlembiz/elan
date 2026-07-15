@@ -95,3 +95,38 @@ export const alerts = sqliteTable("alerts", {
   status: text("status", { enum: ["open", "acknowledged", "closed"] }).notNull().default("open"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const consents = sqliteTable("consents", {
+  id: text("id").primaryKey(),
+  patientId: text("patient_id").notNull().references(() => patientProfiles.id),
+  consentType: text("consent_type", { enum: ["voice_recording", "video_recording", "model_improvement"] }).notNull(),
+  granted: integer("granted", { mode: "boolean" }).notNull().default(false),
+  version: text("version").notNull().default("1.0"),
+  actorEmail: text("actor_email").notNull(),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const mediaAssets = sqliteTable("media_assets", {
+  id: text("id").primaryKey(),
+  patientId: text("patient_id").notNull().references(() => patientProfiles.id),
+  assignmentId: text("assignment_id").references(() => assignments.id),
+  kind: text("kind", { enum: ["voice_recording", "photo", "video"] }).notNull(),
+  storageKey: text("storage_key").notNull().unique(),
+  contentType: text("content_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  durationMs: integer("duration_ms"),
+  recordedBy: text("recorded_by").notNull(),
+  reviewStatus: text("review_status", { enum: ["new", "reviewed", "archived", "deleted"] }).notNull().default("new"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const auditEvents = sqliteTable("audit_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  patientId: text("patient_id").references(() => patientProfiles.id),
+  actorEmail: text("actor_email").notNull(),
+  action: text("action").notNull(),
+  resourceType: text("resource_type").notNull(),
+  resourceId: text("resource_id"),
+  detail: text("detail").notNull().default(""),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});

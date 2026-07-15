@@ -1,7 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import { getDb } from "../../../db";
-import { assignments, attempts, exercises, goals, observations, patientProfiles, users } from "../../../db/schema";
+import { assignments, attempts, consents, exercises, goals, mediaAssets, observations, patientProfiles, users } from "../../../db/schema";
 
 const PATIENT_ID = "patient-salah";
 
@@ -16,6 +16,9 @@ async function ensureDemoWorkspace() {
     env.DB.prepare("CREATE TABLE IF NOT EXISTS observations (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, patient_id TEXT NOT NULL, author_name TEXT NOT NULL, author_role TEXT NOT NULL, category TEXT NOT NULL, note TEXT NOT NULL, status TEXT DEFAULT 'new' NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL, FOREIGN KEY (patient_id) REFERENCES patient_profiles(id))"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS alerts (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, patient_id TEXT NOT NULL, severity TEXT NOT NULL, source TEXT NOT NULL, message TEXT NOT NULL, status TEXT DEFAULT 'open' NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL, FOREIGN KEY (patient_id) REFERENCES patient_profiles(id))"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS care_links (id TEXT PRIMARY KEY NOT NULL, patient_id TEXT NOT NULL, user_id TEXT NOT NULL, relationship TEXT NOT NULL, can_view_recordings INTEGER DEFAULT false NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL, FOREIGN KEY (patient_id) REFERENCES patient_profiles(id), FOREIGN KEY (user_id) REFERENCES users(id))"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS consents (id TEXT PRIMARY KEY NOT NULL, patient_id TEXT NOT NULL, consent_type TEXT NOT NULL, granted INTEGER DEFAULT false NOT NULL, version TEXT DEFAULT '1.0' NOT NULL, actor_email TEXT NOT NULL, updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL, FOREIGN KEY (patient_id) REFERENCES patient_profiles(id))"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS media_assets (id TEXT PRIMARY KEY NOT NULL, patient_id TEXT NOT NULL, assignment_id TEXT, kind TEXT NOT NULL, storage_key TEXT NOT NULL UNIQUE, content_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, duration_ms INTEGER, recorded_by TEXT NOT NULL, review_status TEXT DEFAULT 'new' NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL, FOREIGN KEY (patient_id) REFERENCES patient_profiles(id), FOREIGN KEY (assignment_id) REFERENCES assignments(id))"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, patient_id TEXT, actor_email TEXT NOT NULL, action TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT, detail TEXT DEFAULT '' NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL, FOREIGN KEY (patient_id) REFERENCES patient_profiles(id))"),
   ]);
 
   const db = getDb();
@@ -49,7 +52,9 @@ export async function GET() {
     const program = await db.select({ assignment: assignments, exercise: exercises }).from(assignments).innerJoin(exercises, eq(assignments.exerciseId, exercises.id)).where(eq(assignments.patientId, PATIENT_ID)).orderBy(assignments.orderIndex);
     const recentAttempts = await db.select().from(attempts).where(eq(attempts.patientId, PATIENT_ID)).orderBy(desc(attempts.completedAt)).limit(12);
     const recentObservations = await db.select().from(observations).where(eq(observations.patientId, PATIENT_ID)).orderBy(desc(observations.createdAt)).limit(12);
-    return Response.json({ profile, goals: patientGoals, program, attempts: recentAttempts, observations: recentObservations });
+    const patientConsents = await db.select().from(consents).where(eq(consents.patientId, PATIENT_ID));
+    const recordings = await db.select({ id: mediaAssets.id, kind: mediaAssets.kind, contentType: mediaAssets.contentType, sizeBytes: mediaAssets.sizeBytes, durationMs: mediaAssets.durationMs, recordedBy: mediaAssets.recordedBy, reviewStatus: mediaAssets.reviewStatus, createdAt: mediaAssets.createdAt }).from(mediaAssets).where(eq(mediaAssets.patientId, PATIENT_ID)).orderBy(desc(mediaAssets.createdAt)).limit(20);
+    return Response.json({ profile, goals: patientGoals, program, attempts: recentAttempts, observations: recentObservations, consents: patientConsents, mediaAssets: recordings });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to load workspace" }, { status: 500 });
   }
