@@ -14,7 +14,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "A valid consent choice is required" }, { status: 400 });
     }
     const user = await getChatGPTUser();
-    const actorEmail = user?.email ?? "patient-demo@elan.local";
+    const actorEmail = user?.email ?? "salah@elan.local";
     const id = `${PATIENT_ID}:${consentType}`;
     const db = getDb();
     await db.insert(consents).values({ id, patientId: PATIENT_ID, consentType: consentType as "voice_recording" | "video_recording" | "model_improvement", granted: payload.granted, actorEmail, updatedAt: new Date().toISOString() }).onConflictDoUpdate({ target: consents.id, set: { granted: payload.granted, actorEmail, updatedAt: new Date().toISOString() } });

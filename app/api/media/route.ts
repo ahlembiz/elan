@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     const [voiceConsent] = await db.select().from(consents).where(and(eq(consents.patientId, PATIENT_ID), eq(consents.consentType, "voice_recording"), eq(consents.granted, true))).orderBy(desc(consents.updatedAt)).limit(1);
     if (!voiceConsent) return Response.json({ error: "Voice-recording consent is required" }, { status: 403 });
     const user = await getChatGPTUser();
-    const actorEmail = user?.email ?? "patient-demo@elan.local";
+    const actorEmail = user?.email ?? "salah@elan.local";
     const id = crypto.randomUUID();
     const contentType = audio.type || "audio/webm";
     const storageKey = `patients/${PATIENT_ID}/voice/${id}.webm`;
@@ -52,7 +52,7 @@ export async function DELETE(request: Request) {
     const [asset] = await db.select().from(mediaAssets).where(eq(mediaAssets.id, id)).limit(1);
     if (!asset) return Response.json({ error: "Recording not found" }, { status: 404 });
     const user = await getChatGPTUser();
-    const actorEmail = user?.email ?? "patient-demo@elan.local";
+    const actorEmail = user?.email ?? "salah@elan.local";
     await env.MEDIA.delete(asset.storageKey);
     await db.update(mediaAssets).set({ reviewStatus: "deleted" }).where(eq(mediaAssets.id, id));
     await db.insert(auditEvents).values({ patientId: PATIENT_ID, actorEmail, action: "recording_deleted", resourceType: "media_asset", resourceId: id });
