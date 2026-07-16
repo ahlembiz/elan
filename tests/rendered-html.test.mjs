@@ -95,3 +95,19 @@ test("the patient home and navigation expose older-adult accessibility essential
   assert.match(css, /\.nav-item \{ min-width: 0; min-height: 78px/);
   assert.match(css, /@media \(forced-colors: active\)/);
 });
+
+test("Vercel can deploy the complete frontend without database services", async () => {
+  const [packageJson, envCheck, planApi, productApi] = await Promise.all([
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/check-vercel-env.mjs", import.meta.url), "utf8"),
+    readFile(new URL("api/plan/route.ts", appRoot), "utf8"),
+    readFile(new URL("api/product/route.ts", appRoot), "utf8"),
+  ]);
+
+  assert.match(packageJson, /"vercel-build": "npm run env:check && next build"/);
+  assert.doesNotMatch(envCheck, /"TURSO_DATABASE_URL"/);
+  assert.doesNotMatch(envCheck, /"TURSO_AUTH_TOKEN"/);
+  assert.match(planApi, /if \(usesFrontendData\(\)\) return Response\.json\(readFrontendPlan\(\)\)/);
+  assert.match(planApi, /library: exerciseCatalog/);
+  assert.match(productApi, /if \(usesFrontendData\(\)\) return Response\.json\(frontendProductData\)/);
+});

@@ -11,7 +11,6 @@ export async function POST(request: Request) {
   try {
     const auth = await requireApiSession(request, ["patient"]);
     if ("response" in auth) return auth.response;
-    await ensureProductWorkspace();
     const payload = await request.json() as { consentType?: string; granted?: boolean };
     const consentType = String(payload.consentType ?? "");
     if (!allowedTypes.has(consentType) || typeof payload.granted !== "boolean") {
@@ -19,6 +18,15 @@ export async function POST(request: Request) {
     }
     const actorEmail = auth.session.email;
     const id = `${PATIENT_ID}:${consentType}`;
+    if (!process.env.TURSO_DATABASE_URL) {
+      return Response.json({
+        consent: {
+          id, patientId: PATIENT_ID, consentType, granted: payload.granted,
+          version: "frontend-only", actorEmail, updatedAt: new Date().toISOString(),
+        },
+      });
+    }
+    await ensureProductWorkspace();
     const db = getDb();
     await db.insert(consents).values({ id, patientId: PATIENT_ID, consentType: consentType as "voice_recording" | "video_recording" | "model_improvement", granted: payload.granted, actorEmail, updatedAt: new Date().toISOString() }).onConflictDoUpdate({ target: consents.id, set: { granted: payload.granted, actorEmail, updatedAt: new Date().toISOString() } });
     await db.insert(auditEvents).values({ patientId: PATIENT_ID, actorEmail, action: payload.granted ? "consent_granted" : "consent_withdrawn", resourceType: "consent", resourceId: id, detail: consentType });

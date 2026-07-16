@@ -115,6 +115,64 @@ function toSession(row: SessionRow) {
   };
 }
 
+let frontendPlanRows: PlanRow[] | null = null;
+const frontendSessionRows: SessionRow[] = [];
+
+function usesFrontendData() {
+  return !process.env.TURSO_DATABASE_URL;
+}
+
+function getFrontendPlanRows() {
+  if (frontendPlanRows) return frontendPlanRows;
+  const now = new Date().toISOString();
+  const featuredExercise = exerciseCatalog.find((item) => item.id === "communication-carte-semantique-boissons") ?? exerciseCatalog[0];
+  frontendPlanRows = [
+    {
+      id: "plan-appointment-slp", patient_id: PATIENT_ID, category: "appointment",
+      title_fr: "Orthophonie — Marie-Claude", title_en: "Speech therapy — Marie-Claude",
+      description_fr: "Préparer les trois phrases personnelles à réviser.", description_en: "Prepare the three personal phrases to review.",
+      scheduled_at: "2026-07-16T10:30:00-04:00", status: "active", source: "curated",
+      created_by_role: "admin", created_by_name: "Équipe Élan", evidence_title: null, evidence_url: null,
+      safety_class: "standard", points: 20, exercise_library_id: null, session_id: null, created_at: now, updated_at: now,
+    },
+    {
+      id: "plan-todo-questions", patient_id: PATIENT_ID, category: "todo",
+      title_fr: "Choisir 3 questions pour le rendez-vous", title_en: "Choose 3 questions for the appointment",
+      description_fr: "Écrire, enregistrer ou montrer les questions — toutes les formes sont valides.", description_en: "Write, record, or point to the questions—every form is valid.",
+      scheduled_at: "2026-07-16T18:00:00-04:00", status: "active", source: "curated",
+      created_by_role: "admin", created_by_name: "Équipe Élan", evidence_title: null, evidence_url: null,
+      safety_class: "standard", points: 10, exercise_library_id: null, session_id: null, created_at: now, updated_at: now,
+    },
+    {
+      id: "plan-diet-balanced", patient_id: PATIENT_ID, category: "diet",
+      title_fr: "Repère d’assiette cœur-santé", title_en: "Heart-healthy plate cue",
+      description_fr: "Prévoir légumes ou fruits, grains entiers et une source de protéines selon le plan alimentaire.", description_en: "Plan vegetables or fruit, whole grains, and a protein source according to the food plan.",
+      scheduled_at: null, status: "active", source: "curated", created_by_role: "admin", created_by_name: "Équipe Élan",
+      evidence_title: "Canadian Stroke Best Practices — Healthy Balanced Diet",
+      evidence_url: "https://www.strokebestpractices.ca/recommendations/secondary-prevention-of-stroke/lifestyle-behaviours-and-risk-factor-management",
+      safety_class: "standard", points: 10, exercise_library_id: null, session_id: null, created_at: now, updated_at: now,
+    },
+    {
+      id: "plan-exercise-semantic", patient_id: PATIENT_ID, category: "exercise",
+      title_fr: featuredExercise.titleFr, title_en: featuredExercise.titleEn,
+      description_fr: featuredExercise.instructionsFr, description_en: featuredExercise.instructionsEn,
+      scheduled_at: null, status: "active", source: "curated", created_by_role: "admin", created_by_name: "Équipe Élan",
+      evidence_title: featuredExercise.evidenceTitle, evidence_url: featuredExercise.evidenceUrl,
+      safety_class: featuredExercise.safetyClass, points: 20, exercise_library_id: featuredExercise.id,
+      session_id: null, created_at: now, updated_at: now,
+    },
+  ];
+  return frontendPlanRows;
+}
+
+function readFrontendPlan() {
+  return {
+    entries: getFrontendPlanRows().map(toPlanEntry),
+    library: exerciseCatalog,
+    sessions: frontendSessionRows.map(toSession),
+  };
+}
+
 async function readPlan() {
   const [entries, library, sessions] = await Promise.all([
     sqlite.prepare("SELECT * FROM plan_entries WHERE patient_id = ? ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END, COALESCE(scheduled_at, created_at), created_at DESC").bind(PATIENT_ID).all<PlanRow>(),
@@ -128,6 +186,7 @@ export async function GET(request: Request) {
   try {
     const auth = await requireApiSession(request, ["patient", "family", "admin"]);
     if ("response" in auth) return auth.response;
+    if (usesFrontendData()) return Response.json(readFrontendPlan());
     await ensurePlanWorkspace();
     return Response.json(await readPlan());
   } catch (error) {
@@ -139,11 +198,63 @@ export async function POST(request: Request) {
   try {
     const auth = await requireApiSession(request, ["patient", "family", "admin"]);
     if ("response" in auth) return auth.response;
-    await ensurePlanWorkspace();
     const payload = await request.json() as Record<string, unknown>;
     const createdByRole = auth.session.role;
     const createdByName = auth.session.name;
 
+    if (usesFrontendData()) {
+      const now = new Date().toISOString();
+      if (payload.kind === "session") {
+        const templateIds = [...new Set(Array.isArray(payload.templateIds) ? payload.templateIds.map(String) : [])].slice(0, 8);
+        const templates = templateIds.map((id) => exerciseCatalog.find((item) => item.id === id)).filter((item): item is (typeof exerciseCatalog)[number] => Boolean(item));
+        if (!templates.length) return Response.json({ error: "Choose at least one exercise" }, { status: 400 });
+        const targetDuration = Math.max(5, Math.min(60, Number(payload.targetDuration) || 15));
+        const effortLevel = Math.max(1, Math.min(5, Number(payload.effortLevel) || 2));
+        const sessionId = `session-${crypto.randomUUID()}`;
+        const sessionRow: SessionRow = {
+          id: sessionId, patient_id: PATIENT_ID,
+          title_fr: `Séance ${frontendSessionRows.length + 1} · ${targetDuration} min`,
+          title_en: `Session ${frontendSessionRows.length + 1} · ${targetDuration} min`,
+          target_duration: targetDuration, effort_level: effortLevel, status: "active",
+          created_by_role: createdByRole, created_by_name: createdByName, created_at: now, updated_at: now,
+        };
+        const rows: PlanRow[] = templates.map((template) => ({
+          id: `plan-${crypto.randomUUID()}`, patient_id: PATIENT_ID, category: "exercise",
+          title_fr: template.titleFr, title_en: template.titleEn,
+          description_fr: template.instructionsFr, description_en: template.instructionsEn,
+          scheduled_at: null, status: "active", source: "curated",
+          created_by_role: createdByRole, created_by_name: createdByName,
+          evidence_title: template.evidenceTitle, evidence_url: template.evidenceUrl,
+          safety_class: template.safetyClass, points: 20, exercise_library_id: template.id,
+          session_id: sessionId, created_at: now, updated_at: now,
+        }));
+        frontendSessionRows.unshift(sessionRow);
+        getFrontendPlanRows().unshift(...rows);
+        return Response.json({ session: toSession(sessionRow), entries: rows.map(toPlanEntry) }, { status: 201 });
+      }
+
+      const templateId = String(payload.templateId ?? "").trim();
+      const template = templateId ? exerciseCatalog.find((item) => item.id === templateId) : null;
+      const category = template ? "exercise" : String(payload.category ?? "todo");
+      const title = template ? template.titleFr : String(payload.title ?? "").trim().slice(0, 120);
+      if (!CATEGORIES.has(category) || !title) return Response.json({ error: "A valid category and title are required" }, { status: 400 });
+      const row: PlanRow = {
+        id: `plan-${crypto.randomUUID()}`, patient_id: PATIENT_ID, category,
+        title_fr: title, title_en: template?.titleEn ?? title,
+        description_fr: template?.instructionsFr ?? String(payload.description ?? "").trim().slice(0, 800),
+        description_en: template?.instructionsEn ?? String(payload.description ?? "").trim().slice(0, 800),
+        scheduled_at: String(payload.scheduledAt ?? "").trim() || null, status: "active",
+        source: template ? "curated" : "manual", created_by_role: createdByRole, created_by_name: createdByName,
+        evidence_title: template?.evidenceTitle ?? null, evidence_url: template?.evidenceUrl ?? null,
+        safety_class: template?.safetyClass ?? (category === "exercise" ? "clinical_review" : "standard"),
+        points: template ? 20 : 10, exercise_library_id: template?.id ?? null, session_id: null,
+        created_at: now, updated_at: now,
+      };
+      getFrontendPlanRows().unshift(row);
+      return Response.json({ entry: toPlanEntry(row) }, { status: 201 });
+    }
+
+    await ensurePlanWorkspace();
     if (payload.kind === "session") {
       const templateIds = [...new Set(Array.isArray(payload.templateIds) ? payload.templateIds.map(String) : [])].slice(0, 8);
       const targetDuration = Math.max(5, Math.min(60, Number(payload.targetDuration) || 15));
@@ -198,13 +309,27 @@ export async function PATCH(request: Request) {
   try {
     const auth = await requireApiSession(request, ["patient", "family", "admin"]);
     if ("response" in auth) return auth.response;
-    await ensurePlanWorkspace();
     const payload = await request.json() as Record<string, unknown>;
     const id = String(payload.id ?? "");
     const status = String(payload.status ?? "");
     if (!id || !["active", "completed", "paused"].includes(status)) {
       return Response.json({ error: "Invalid plan update" }, { status: 400 });
     }
+    if (usesFrontendData()) {
+      const row = getFrontendPlanRows().find((item) => item.id === id);
+      if (!row) return Response.json({ error: "Plan entry not found" }, { status: 404 });
+      row.status = status;
+      row.updated_at = new Date().toISOString();
+      if (row.session_id) {
+        const session = frontendSessionRows.find((item) => item.id === row.session_id);
+        if (session) {
+          session.status = getFrontendPlanRows().filter((item) => item.session_id === row.session_id).every((item) => item.status === "completed") ? "completed" : "active";
+          session.updated_at = row.updated_at;
+        }
+      }
+      return Response.json({ entry: toPlanEntry(row) });
+    }
+    await ensurePlanWorkspace();
     const existing = await sqlite.prepare("SELECT * FROM plan_entries WHERE id = ? AND patient_id = ?").bind(id, PATIENT_ID).first<PlanRow>();
     if (!existing) return Response.json({ error: "Plan entry not found" }, { status: 404 });
     await sqlite.prepare("UPDATE plan_entries SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND patient_id = ?").bind(status, id, PATIENT_ID).run();

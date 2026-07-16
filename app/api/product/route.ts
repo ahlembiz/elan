@@ -5,6 +5,35 @@ import { assignments, attempts, consents, exercises, goals, mediaAssets, observa
 
 const PATIENT_ID = "patient-salah";
 
+const frontendProductData = {
+  profile: {
+    id: PATIENT_ID,
+    preferredName: "Salah",
+    preferredLanguage: "fr-CA",
+    primaryGoal: "Demander ce dont j’ai besoin avec plus d’autonomie",
+    supervisionSummary: "Quelqu’un à proximité pour les transferts et exercices debout",
+    nextReviewDate: "2026-07-20",
+  },
+  goals: [
+    { id: "goal-communication", patientId: PATIENT_ID, domain: "communication", title: "Utiliser une phrase utile avec un seul indice", status: "active", progressNote: "5 mots personnels demandent moins d’aide", reviewDate: "2026-07-20" },
+    { id: "goal-mobility", patientId: PATIENT_ID, domain: "mobility", title: "Se lever d’une chaise avec supervision", status: "active", progressNote: "5 répétitions complétées à effort modéré", reviewDate: "2026-07-22" },
+    { id: "goal-participation", patientId: PATIENT_ID, domain: "participation", title: "Demander un verre d’eau dans la cuisine", status: "active", progressNote: "Mission réussie 3 fois cette semaine", reviewDate: "2026-07-24" },
+  ],
+  program: [
+    { assignment: { id: "assignment-words", patientId: PATIENT_ID, exerciseId: "exercise-words", scheduledDate: "2026-07-16", orderIndex: 1, status: "assigned" }, exercise: { id: "exercise-words", domain: "communication", titleFr: "Mes mots importants", titleEn: "My important words", instructionsFr: "Dites, montrez ou écrivez le mot.", instructionsEn: "Say, point to, or write the word.", assistanceLevel: "Indices gradués", repetitions: "3 mots", safetyNoteFr: "", safetyNoteEn: "", clinicianName: "Marie-Claude", reviewedAt: "2026-07-10" } },
+    { assignment: { id: "assignment-chair", patientId: PATIENT_ID, exerciseId: "exercise-chair", scheduledDate: "2026-07-16", orderIndex: 2, status: "assigned" }, exercise: { id: "exercise-chair", domain: "mobility", titleFr: "Se lever d’une chaise", titleEn: "Stand up from a chair", instructionsFr: "Pieds au sol. Penchez-vous vers l’avant.", instructionsEn: "Feet on the floor. Lean forward.", assistanceLevel: "Quelqu’un à proximité", repetitions: "5 répétitions", safetyNoteFr: "Arrêtez en cas de douleur ou d’étourdissement.", safetyNoteEn: "Stop if you feel pain or dizziness.", clinicianName: "Karim B.", reviewedAt: "2026-07-11" } },
+    { assignment: { id: "assignment-kitchen", patientId: PATIENT_ID, exerciseId: "exercise-kitchen", scheduledDate: "2026-07-16", orderIndex: 3, status: "assigned" }, exercise: { id: "exercise-kitchen", domain: "participation", titleFr: "Mission dans la cuisine", titleEn: "Kitchen mission", instructionsFr: "Demandez un verre d’eau à votre façon.", instructionsEn: "Ask for a glass of water in your own way.", assistanceLevel: "Partenaire disponible", repetitions: "1 mission", safetyNoteFr: "", safetyNoteEn: "", clinicianName: "Marie-Claude", reviewedAt: "2026-07-10" } },
+  ],
+  attempts: [],
+  observations: [],
+  consents: [],
+  mediaAssets: [],
+};
+
+function usesFrontendData() {
+  return !process.env.TURSO_DATABASE_URL;
+}
+
 let productWorkspacePromise: Promise<void> | null = null;
 
 async function initializeProductWorkspace() {
@@ -52,6 +81,7 @@ export async function GET(request: Request) {
   try {
     const auth = await requireApiSession(request, ["patient", "family", "admin"]);
     if ("response" in auth) return auth.response;
+    if (usesFrontendData()) return Response.json(frontendProductData);
     await ensureProductWorkspace();
     const db = getDb();
     const [profile] = await db.select().from(patientProfiles).where(eq(patientProfiles.id, PATIENT_ID)).limit(1);
@@ -71,8 +101,25 @@ export async function POST(request: Request) {
   try {
     const auth = await requireApiSession(request, ["patient", "family", "admin"]);
     if ("response" in auth) return auth.response;
-    await ensureProductWorkspace();
     const payload = await request.json() as Record<string, unknown>;
+    if (usesFrontendData()) {
+      if (payload.kind === "observation") {
+        if (!["family", "admin"].includes(auth.session.role)) {
+          return Response.json({ error: "Only a family or administration account can add observations" }, { status: 403 });
+        }
+        const note = String(payload.note ?? "").trim();
+        if (!note) return Response.json({ error: "Observation text is required" }, { status: 400 });
+        return Response.json({ observation: { id: Date.now(), patientId: PATIENT_ID, authorName: auth.session.name, authorRole: auth.session.role, category: String(payload.category ?? "communication"), note, status: "new", createdAt: new Date().toISOString() } }, { status: 201 });
+      }
+      if (payload.kind === "session_complete") {
+        if (!["patient", "family"].includes(auth.session.role)) {
+          return Response.json({ error: "This account cannot complete a patient session" }, { status: 403 });
+        }
+        return Response.json({ attempt: { id: Date.now(), assignmentId: "assignment-kitchen", patientId: PATIENT_ID, supportLevel: Number(payload.supportLevel ?? 3), effort: Number(payload.effort ?? 3), confidence: Number(payload.confidence ?? 3), completedAt: new Date().toISOString() } }, { status: 201 });
+      }
+      return Response.json({ error: "Unsupported action" }, { status: 400 });
+    }
+    await ensureProductWorkspace();
     const db = getDb();
     if (payload.kind === "observation") {
       if (!["family", "admin"].includes(auth.session.role)) {

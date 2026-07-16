@@ -15,6 +15,9 @@ export async function GET(request: Request) {
   try {
     const auth = await requireApiSession(request, ["patient", "admin"]);
     if ("response" in auth) return auth.response;
+    if (!process.env.TURSO_DATABASE_URL) {
+      return Response.json({ error: "Recordings are not retained in frontend-only mode" }, { status: 404 });
+    }
     const id = new URL(request.url).searchParams.get("id");
     if (!id) return Response.json({ error: "Recording id is required" }, { status: 400 });
     await ensureProductWorkspace();
@@ -33,14 +36,23 @@ export async function POST(request: Request) {
   try {
     const auth = await requireApiSession(request, ["patient"]);
     if ("response" in auth) return auth.response;
-    await ensureProductWorkspace();
     const form = await request.formData();
     const audio = form.get("audio");
     if (!(audio instanceof File) || audio.size === 0) return Response.json({ error: "An audio recording is required" }, { status: 400 });
     if (audio.size > MAX_RECORDING_SIZE) return Response.json({ error: "Recording exceeds the 15 MB limit" }, { status: 413 });
     const contentType = audio.type || "audio/webm";
     if (!ALLOWED_AUDIO_TYPES.has(contentType)) return Response.json({ error: "Unsupported audio format" }, { status: 415 });
+    if (!process.env.TURSO_DATABASE_URL) {
+      return Response.json({
+        asset: {
+          id: crypto.randomUUID(), kind: "voice_recording", contentType, sizeBytes: audio.size,
+          durationMs: Number(form.get("durationMs") ?? 0) || null, recordedBy: auth.session.email,
+          reviewStatus: "new", createdAt: new Date().toISOString(), frontendOnly: true,
+        },
+      }, { status: 201 });
+    }
 
+    await ensureProductWorkspace();
     const db = getDb();
     const [voiceConsent] = await db.select().from(consents).where(and(eq(consents.patientId, PATIENT_ID), eq(consents.consentType, "voice_recording"), eq(consents.granted, true))).orderBy(desc(consents.updatedAt)).limit(1);
     if (!voiceConsent) return Response.json({ error: "Voice-recording consent is required" }, { status: 403 });
@@ -65,6 +77,7 @@ export async function DELETE(request: Request) {
   try {
     const auth = await requireApiSession(request, ["patient", "admin"]);
     if ("response" in auth) return auth.response;
+    if (!process.env.TURSO_DATABASE_URL) return Response.json({ deleted: true });
     const id = new URL(request.url).searchParams.get("id");
     if (!id) return Response.json({ error: "Recording id is required" }, { status: 400 });
     await ensureProductWorkspace();

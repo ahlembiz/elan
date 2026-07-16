@@ -1,7 +1,4 @@
 const required = [
-  "TURSO_DATABASE_URL",
-  "TURSO_AUTH_TOKEN",
-  "BLOB_READ_WRITE_TOKEN",
   "ELAN_SESSION_SECRET",
   "ELAN_PATIENT_CODE",
   "ELAN_FAMILY_CODE",
@@ -28,4 +25,8 @@ for (const name of ["ELAN_PATIENT_CODE", "ELAN_FAMILY_CODE", "ELAN_ADMIN_CODE"])
   }
 }
 
-process.stdout.write("Vercel environment is configured.\n");
+process.stdout.write(
+  process.env.TURSO_DATABASE_URL
+    ? "Vercel environment is configured with durable database storage.\n"
+    : "Vercel environment is configured in frontend-only mode.\n",
+);
