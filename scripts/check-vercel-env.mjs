@@ -1,4 +1,4 @@
-const required = ["ELAN_SESSION_SECRET"];
+const required = ["ELAN_SESSION_SECRET", "NEXT_PUBLIC_CONVEX_URL", "ELAN_CONVEX_API_SECRET"];
 
 if (!process.env.VERCEL) {
   process.stdout.write("Local build: Vercel environment validation skipped.\n");
@@ -15,7 +15,5 @@ if (process.env.ELAN_SESSION_SECRET.length < 32) {
 }
 
 process.stdout.write(
-  process.env.TURSO_DATABASE_URL
-    ? "Vercel environment is configured with durable database storage.\n"
-    : "Vercel environment is configured in frontend-only mode.\n",
+  "Vercel environment is configured with Convex persistence.\n",
 );

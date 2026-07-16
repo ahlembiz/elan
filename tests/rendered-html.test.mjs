@@ -96,7 +96,7 @@ test("the patient home and navigation expose older-adult accessibility essential
   assert.match(css, /@media \(forced-colors: active\)/);
 });
 
-test("Vercel can deploy the complete frontend without database services", async () => {
+test("Vercel can deploy without the legacy SQLite service", async () => {
   const [packageJson, envCheck, planApi, productApi, login, sessionApi] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../scripts/check-vercel-env.mjs", import.meta.url), "utf8"),
@@ -114,4 +114,31 @@ test("Vercel can deploy the complete frontend without database services", async 
   assert.match(productApi, /if \(usesFrontendData\(\)\) return Response\.json\(frontendProductData\)/);
   assert.doesNotMatch(login, /Code d’accès|type="password"|11111111/);
   assert.doesNotMatch(sessionApi, /verifyAccessCode|payload\.code/);
+});
+
+test("Convex persists progress and creates one date-specific daily session", async () => {
+  const [schema, functions, planApi, productApi, app, envCheck] = await Promise.all([
+    readFile(new URL("../convex/schema.ts", import.meta.url), "utf8"),
+    readFile(new URL("../convex/elan.ts", import.meta.url), "utf8"),
+    readFile(new URL("api/plan/route.ts", appRoot), "utf8"),
+    readFile(new URL("api/product/route.ts", appRoot), "utf8"),
+    readFile(new URL("ElanApp.tsx", appRoot), "utf8"),
+    readFile(new URL("../scripts/check-vercel-env.mjs", import.meta.url), "utf8"),
+  ]);
+
+  for (const table of ["planEntries", "planSessions", "attempts", "observations", "consents"]) {
+    assert.match(schema, new RegExp(`${table}: defineTable`));
+  }
+  assert.match(functions, /export const ensureDailySession = mutation/);
+  assert.match(functions, /stableHash\(`\$\{patientId\}:\$\{date\}`\)/);
+  assert.match(functions, /withIndex\("by_patient_date"/);
+  assert.match(functions, /export const recordAttempt = mutation/);
+  assert.match(functions, /export const updatePlanEntry = mutation/);
+  assert.match(planApi, /convexMutation<string>\("elan:ensureDailySession"/);
+  assert.match(productApi, /convexMutation<unknown>\("elan:recordAttempt"/);
+  assert.match(productApi, /dailySession/);
+  assert.match(app, /Voir ma séance du jour/);
+  assert.match(app, /dailyEntries\.map/);
+  assert.match(envCheck, /"NEXT_PUBLIC_CONVEX_URL"/);
+  assert.match(envCheck, /"ELAN_CONVEX_API_SECRET"/);
 });

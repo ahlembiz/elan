@@ -1,4 +1,5 @@
 import { sqlite } from "../../../db";
+import { convexMutation, convexQuery, hasConvex, torontoDate } from "../../../lib/convex";
 import { requireApiSession } from "../../../lib/session";
 import { ensureProductWorkspace } from "../product/route";
 import { exerciseCatalog } from "./exerciseCatalog";
@@ -186,6 +187,16 @@ export async function GET(request: Request) {
   try {
     const auth = await requireApiSession(request, ["patient", "family", "admin"]);
     if ("response" in auth) return auth.response;
+    if (hasConvex()) {
+      await convexMutation<string>("elan:ensureDailySession", {
+        patientId: PATIENT_ID,
+        date: torontoDate(),
+        actorRole: auth.session.role,
+        actorName: auth.session.name,
+      });
+      const plan = await convexQuery<{ entries: unknown[]; sessions: unknown[] }>("elan:getPlan", { patientId: PATIENT_ID });
+      return Response.json({ ...plan, library: exerciseCatalog });
+    }
     if (usesFrontendData()) return Response.json(readFrontendPlan());
     await ensurePlanWorkspace();
     return Response.json(await readPlan());
@@ -201,6 +212,39 @@ export async function POST(request: Request) {
     const payload = await request.json() as Record<string, unknown>;
     const createdByRole = auth.session.role;
     const createdByName = auth.session.name;
+
+    if (hasConvex()) {
+      if (payload.kind === "session") {
+        const templateIds = [...new Set(Array.isArray(payload.templateIds) ? payload.templateIds.map(String) : [])].slice(0, 8);
+        if (!templateIds.length) return Response.json({ error: "Choose at least one exercise" }, { status: 400 });
+        const result = await convexMutation<{ session: unknown; entries: unknown[] }>("elan:createSession", {
+          patientId: PATIENT_ID,
+          templateIds,
+          targetDuration: Math.max(5, Math.min(60, Number(payload.targetDuration) || 15)),
+          effortLevel: Math.max(1, Math.min(5, Number(payload.effortLevel) || 2)),
+          actorRole: createdByRole,
+          actorName: createdByName,
+        });
+        return Response.json(result, { status: 201 });
+      }
+      const category = String(payload.category ?? "todo");
+      const title = String(payload.title ?? "").trim().slice(0, 120);
+      const templateId = String(payload.templateId ?? "").trim() || undefined;
+      if (!templateId && (!CATEGORIES.has(category) || !title)) {
+        return Response.json({ error: "A valid category and title are required" }, { status: 400 });
+      }
+      const entry = await convexMutation<unknown>("elan:addPlanEntry", {
+        patientId: PATIENT_ID,
+        templateId,
+        category,
+        title,
+        description: String(payload.description ?? "").trim().slice(0, 800),
+        scheduledAt: String(payload.scheduledAt ?? "").trim() || undefined,
+        actorRole: createdByRole,
+        actorName: createdByName,
+      });
+      return Response.json({ entry }, { status: 201 });
+    }
 
     if (usesFrontendData()) {
       const now = new Date().toISOString();
@@ -314,6 +358,14 @@ export async function PATCH(request: Request) {
     const status = String(payload.status ?? "");
     if (!id || !["active", "completed", "paused"].includes(status)) {
       return Response.json({ error: "Invalid plan update" }, { status: 400 });
+    }
+    if (hasConvex()) {
+      const entry = await convexMutation<unknown>("elan:updatePlanEntry", {
+        patientId: PATIENT_ID,
+        id,
+        status,
+      });
+      return Response.json({ entry });
     }
     if (usesFrontendData()) {
       const row = getFrontendPlanRows().find((item) => item.id === id);

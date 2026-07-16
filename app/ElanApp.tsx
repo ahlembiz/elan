@@ -22,6 +22,10 @@ type ProductData = {
   observations: Array<{ id: number; authorName: string; category: string; note: string; status: string; createdAt: string }>;
   consents: Array<{ id: string; consentType: string; granted: boolean; version: string; updatedAt: string }>;
   mediaAssets: Array<{ id: string; kind: string; contentType: string; sizeBytes: number; durationMs: number | null; recordedBy: string; reviewStatus: string; createdAt: string }>;
+  dailySession?: {
+    id: string; titleFr: string; titleEn: string; targetDuration: number; effortLevel: number; status: string;
+    entries: Array<{ titleFr: string; titleEn: string; descriptionFr: string; descriptionEn: string; status: string; exerciseLibraryId: string | null }>;
+  };
 };
 
 const fallbackData: ProductData = {
@@ -388,7 +392,7 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
         ) : role === "admin" ? (
           <MyPlan key={portalTab} language={language} initialTab={portalTab} actorRole="admin" attemptCount={productData.attempts.length} />
         ) : view === "today" ? (
-          <Today language={language} onStart={beginSession} onLibrary={() => setView("practice")} onPlan={() => setView("plan")} onBoard={() => setBoardOpen(true)} onProgress={() => setView("progress")} attemptCount={productData.attempts.length} />
+          <Today language={language} onStart={beginSession} onLibrary={() => setView("practice")} onPlan={() => setView("plan")} onBoard={() => setBoardOpen(true)} onProgress={() => setView("progress")} attemptCount={productData.attempts.length} dailySession={productData.dailySession} />
         ) : view === "progress" ? (
           <Progress language={language} />
         ) : view === "practice" ? (
@@ -453,16 +457,18 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
   );
 }
 
-function Today({ language, onStart, onLibrary, onPlan, onBoard, onProgress, attemptCount }: { language: Language; onStart: () => void; onLibrary: () => void; onPlan: () => void; onBoard: () => void; onProgress: () => void; attemptCount: number }) {
+function Today({ language, onStart, onLibrary, onPlan, onBoard, onProgress, attemptCount, dailySession }: { language: Language; onStart: () => void; onLibrary: () => void; onPlan: () => void; onBoard: () => void; onProgress: () => void; attemptCount: number; dailySession?: ProductData["dailySession"] }) {
   const t = copy[language];
+  const dailyEntries = dailySession?.entries.slice(0, 3) ?? [];
+  const dailyDuration = dailySession?.targetDuration ?? 18;
   return <div className="dashboard accessible-home">
     <section className="home-welcome" aria-labelledby="home-question">
       <div className="home-welcome-copy">
         <span className="status-chip"><span className="status-dot" /> {language === "fr" ? "Votre plan est prêt" : "Your plan is ready"}</span>
         <h2 id="home-question">{language === "fr" ? "Que voulez-vous faire aujourd’hui?" : "What would you like to do today?"}</h2>
         <p>{language === "fr" ? "Commencez la séance prévue ou choisissez une activité qui correspond à votre énergie." : "Start the planned session or choose an activity that matches your energy."}</p>
-        <button className="home-primary-action" onClick={onStart}><span className="home-action-icon" aria-hidden="true">▶</span><span><b>{t.start}</b><small>{language === "fr" ? "18 minutes · pauses permises" : "18 minutes · breaks are welcome"}</small></span><span className="home-action-arrow" aria-hidden="true">→</span></button>
-        <button className="home-secondary-action" onClick={onLibrary}>{language === "fr" ? "Choisir une autre séance" : "Choose another session"}<span aria-hidden="true">→</span></button>
+        <button className="home-primary-action" onClick={dailySession ? onLibrary : onStart}><span className="home-action-icon" aria-hidden="true">▶</span><span><b>{dailySession ? (language === "fr" ? "Voir ma séance du jour" : "View today’s session") : t.start}</b><small>{dailyDuration} {language === "fr" ? "minutes · nouvelle sélection aujourd’hui" : "minutes · a new selection today"}</small></span><span className="home-action-arrow" aria-hidden="true">→</span></button>
+        <button className="home-secondary-action" onClick={dailySession ? onStart : onLibrary}>{dailySession ? (language === "fr" ? "Faire la séance guidée" : "Use the guided session") : (language === "fr" ? "Choisir une autre séance" : "Choose another session")}<span aria-hidden="true">→</span></button>
       </div>
       <button className="home-board-callout" onClick={onBoard}>
         <span className="home-board-icon" aria-hidden="true">•••</span>
@@ -482,13 +488,15 @@ function Today({ language, onStart, onLibrary, onPlan, onBoard, onProgress, atte
 
     <section className="home-details" aria-labelledby="home-plan-title">
       <article className="home-today-card card-surface">
-        <div className="home-section-heading"><div><p className="eyebrow">{t.plan}</p><h3 id="home-plan-title">{language === "fr" ? "Votre séance en 3 étapes" : "Your session in 3 steps"}</h3></div><span className="home-duration">18 min</span></div>
+        <div className="home-section-heading"><div><p className="eyebrow">{t.plan}</p><h3 id="home-plan-title">{dailySession ? (language === "fr" ? "Votre nouvelle séance du jour" : "Your new session for today") : (language === "fr" ? "Votre séance en 3 étapes" : "Your session in 3 steps")}</h3></div><span className="home-duration">{dailyDuration} min</span></div>
         <ol className="home-step-list">
-          <li><span>1</span><div><b>{t.words}</b><small>{t.wordsSub}</small></div></li>
-          <li><span>2</span><div><b>{t.movement}</b><small>{language === "fr" ? "Avec une personne près de vous" : "With someone nearby"}</small></div></li>
-          <li><span>3</span><div><b>{t.mission}</b><small>{t.missionSub}</small></div></li>
+          {dailyEntries.length ? dailyEntries.map((entry, index) => <li key={`${entry.exerciseLibraryId}-${index}`}><span>{index + 1}</span><div><b>{language === "fr" ? entry.titleFr : entry.titleEn}</b><small>{language === "fr" ? entry.descriptionFr : entry.descriptionEn}</small></div></li>) : <>
+            <li><span>1</span><div><b>{t.words}</b><small>{t.wordsSub}</small></div></li>
+            <li><span>2</span><div><b>{t.movement}</b><small>{language === "fr" ? "Avec une personne près de vous" : "With someone nearby"}</small></div></li>
+            <li><span>3</span><div><b>{t.mission}</b><small>{t.missionSub}</small></div></li>
+          </>}
         </ol>
-        <button className="home-start-again" onClick={onStart}>{t.start}<span aria-hidden="true">→</span></button>
+        <button className="home-start-again" onClick={dailySession ? onLibrary : onStart}>{dailySession ? (language === "fr" ? "Ouvrir la séance du jour" : "Open today’s session") : t.start}<span aria-hidden="true">→</span></button>
       </article>
 
       <div className="home-side-stack">

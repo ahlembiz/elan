@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../db";
+import { convexMutation, hasConvex } from "../../../lib/convex";
 import { requireApiSession } from "../../../lib/session";
 import { auditEvents, consents } from "../../../db/schema";
 import { ensureProductWorkspace } from "../product/route";
@@ -18,6 +19,15 @@ export async function POST(request: Request) {
     }
     const actorEmail = auth.session.email;
     const id = `${PATIENT_ID}:${consentType}`;
+    if (hasConvex()) {
+      const consent = await convexMutation<unknown>("elan:setConsent", {
+        patientId: PATIENT_ID,
+        consentType,
+        granted: payload.granted,
+        actorEmail,
+      });
+      return Response.json({ consent });
+    }
     if (!process.env.TURSO_DATABASE_URL) {
       return Response.json({
         consent: {

@@ -1,5 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import { getDb, sqlite } from "../../../db";
+import { convexMutation, convexQuery, hasConvex, torontoDate } from "../../../lib/convex";
 import { requireApiSession } from "../../../lib/session";
 import { assignments, attempts, consents, exercises, goals, mediaAssets, observations, patientProfiles } from "../../../db/schema";
 
@@ -81,6 +82,24 @@ export async function GET(request: Request) {
   try {
     const auth = await requireApiSession(request, ["patient", "family", "admin"]);
     if ("response" in auth) return auth.response;
+    if (hasConvex()) {
+      const date = torontoDate();
+      await convexMutation<string>("elan:ensureDailySession", {
+        patientId: PATIENT_ID,
+        date,
+        actorRole: auth.session.role,
+        actorName: auth.session.name,
+      });
+      type StoredEntry = { sessionId: string | null; titleFr: string; titleEn: string; descriptionFr: string; descriptionEn: string; status: string; exerciseLibraryId: string | null };
+      type StoredSession = { id: string; sessionDate?: string; titleFr: string; titleEn: string; targetDuration: number; effortLevel: number; status: string };
+      const [activity, plan] = await Promise.all([
+        convexQuery<{ attempts: unknown[]; observations: unknown[]; consents: unknown[] }>("elan:getActivity", { patientId: PATIENT_ID }),
+        convexQuery<{ entries: StoredEntry[]; sessions: StoredSession[] }>("elan:getPlan", { patientId: PATIENT_ID }),
+      ]);
+      const session = plan.sessions.find((item) => item.sessionDate === date);
+      const dailySession = session ? { ...session, entries: plan.entries.filter((entry) => entry.sessionId === session.id) } : undefined;
+      return Response.json({ ...frontendProductData, ...activity, dailySession });
+    }
     if (usesFrontendData()) return Response.json(frontendProductData);
     await ensureProductWorkspace();
     const db = getDb();
@@ -102,6 +121,37 @@ export async function POST(request: Request) {
     const auth = await requireApiSession(request, ["patient", "family", "admin"]);
     if ("response" in auth) return auth.response;
     const payload = await request.json() as Record<string, unknown>;
+    if (hasConvex()) {
+      if (payload.kind === "observation") {
+        if (!["family", "admin"].includes(auth.session.role)) {
+          return Response.json({ error: "Only a family or administration account can add observations" }, { status: 403 });
+        }
+        const note = String(payload.note ?? "").trim();
+        if (!note) return Response.json({ error: "Observation text is required" }, { status: 400 });
+        const observation = await convexMutation<unknown>("elan:addObservation", {
+          patientId: PATIENT_ID,
+          authorName: auth.session.name,
+          authorRole: auth.session.role,
+          category: String(payload.category ?? "communication"),
+          note,
+        });
+        return Response.json({ observation }, { status: 201 });
+      }
+      if (payload.kind === "session_complete") {
+        if (!["patient", "family"].includes(auth.session.role)) {
+          return Response.json({ error: "This account cannot complete a patient session" }, { status: 403 });
+        }
+        const attempt = await convexMutation<unknown>("elan:recordAttempt", {
+          patientId: PATIENT_ID,
+          assignmentId: "assignment-kitchen",
+          supportLevel: Number(payload.supportLevel ?? 3),
+          effort: Number(payload.effort ?? 3),
+          confidence: Number(payload.confidence ?? 3),
+        });
+        return Response.json({ attempt }, { status: 201 });
+      }
+      return Response.json({ error: "Unsupported action" }, { status: 400 });
+    }
     if (usesFrontendData()) {
       if (payload.kind === "observation") {
         if (!["family", "admin"].includes(auth.session.role)) {
