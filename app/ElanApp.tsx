@@ -9,6 +9,7 @@ type View = "today" | "communicate" | "practice" | "plan" | "progress" | "privac
 type SessionStep = "checkin" | "words" | "movement" | "mission" | "complete";
 type Role = "patient" | "family" | "admin";
 type Theme = "day" | "night";
+type TextSize = "standard" | "large";
 
 type ProductData = {
   profile?: { preferredName: string; primaryGoal: string; supervisionSummary: string; nextReviewDate: string };
@@ -32,18 +33,18 @@ const fallbackData: ProductData = {
 
 const copy = {
   fr: {
-    today: "Aujourd’hui",
-    communicate: "Communiquer",
-    practice: "Pratiquer",
-    progress: "Mes progrès",
+    today: "Accueil",
+    communicate: "Tableau",
+    practice: "Mes séances",
+    progress: "Progrès",
     help: "Aide",
     greeting: "Bonjour, Salah",
     subtitle: "Voici votre programme pour aujourd’hui.",
-    goodMorning: "Mardi 14 juillet",
+    goodMorning: "Aujourd’hui",
     ready: "Prêt à commencer?",
     session: "Votre séance",
     minutes: "Environ 18 minutes",
-    start: "Commencer la séance",
+    start: "Commencer ma séance",
     shorter: "Faire une séance plus courte",
     plan: "Au programme",
     words: "Mes mots importants",
@@ -62,18 +63,18 @@ const copy = {
     quit: "Quitter",
   },
   en: {
-    today: "Today",
-    communicate: "Communicate",
-    practice: "Practice",
-    progress: "My progress",
+    today: "Home",
+    communicate: "Board",
+    practice: "My sessions",
+    progress: "Progress",
     help: "Help",
     greeting: "Hello, Salah",
     subtitle: "Here is your program for today.",
-    goodMorning: "Tuesday, July 14",
+    goodMorning: "Today",
     ready: "Ready to begin?",
     session: "Your session",
     minutes: "About 18 minutes",
-    start: "Start session",
+    start: "Start my session",
     shorter: "Choose a shorter session",
     plan: "Today’s plan",
     words: "My important words",
@@ -124,6 +125,7 @@ export default function ElanApp() {
   const [language, setLanguage] = useState<Language>("fr");
   const [role, setRole] = useState<Role>("patient");
   const [theme, setTheme] = useState<Theme>("day");
+  const [textSize, setTextSize] = useState<TextSize>("standard");
   const [view, setView] = useState<View>("today");
   const [portalTab, setPortalTab] = useState("overview");
   const [productData, setProductData] = useState<ProductData>(fallbackData);
@@ -154,6 +156,14 @@ export default function ElanApp() {
   }, []);
 
   useEffect(() => {
+    const stored = window.localStorage.getItem("elan-text-size");
+    const preferred: TextSize = stored === "large" ? "large" : "standard";
+    document.documentElement.dataset.textSize = preferred;
+    const frame = window.requestAnimationFrame(() => setTextSize(preferred));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
     const stored = window.localStorage.getItem("elan-theme");
     const preferred: Theme = stored === "night" || stored === "day" ? stored : window.matchMedia("(prefers-color-scheme: dark)").matches ? "night" : "day";
     document.documentElement.dataset.theme = preferred;
@@ -168,27 +178,34 @@ export default function ElanApp() {
     window.localStorage.setItem("elan-theme", nextTheme);
   };
 
+  const toggleTextSize = () => {
+    const nextSize: TextSize = textSize === "standard" ? "large" : "standard";
+    setTextSize(nextSize);
+    document.documentElement.dataset.textSize = nextSize;
+    window.localStorage.setItem("elan-text-size", nextSize);
+  };
+
   const nav = useMemo(() => {
     if (role === "family") return [
-      { id: "overview", label: language === "fr" ? "Soutien du jour" : "Today’s support", mark: "S" },
-      { id: "conversations", label: language === "fr" ? "Conversations" : "Conversations", mark: "C" },
-      { id: "plan", label: language === "fr" ? "Mes séances" : "My sessions", mark: "E" },
-      { id: "observations", label: language === "fr" ? "Observations" : "Observations", mark: "O" },
-      { id: "guidance", label: language === "fr" ? "Guidance" : "Guidance", mark: "?" },
+      { id: "overview", label: language === "fr" ? "Accueil" : "Home", mark: "⌂" },
+      { id: "plan", label: language === "fr" ? "Séances" : "Sessions", mark: "▶" },
+      { id: "conversations", label: language === "fr" ? "Communiquer" : "Communicate", mark: "••" },
+      { id: "observations", label: language === "fr" ? "Notes" : "Notes", mark: "✎" },
+      { id: "guidance", label: language === "fr" ? "Conseils" : "Guidance", mark: "?" },
     ];
     if (role === "admin") return [
-      { id: "overview", label: language === "fr" ? "Mon plan" : "My plan", mark: "A" },
-      { id: "appointments", label: language === "fr" ? "Rendez-vous" : "Appointments", mark: "R" },
+      { id: "overview", label: language === "fr" ? "Vue d’ensemble" : "Overview", mark: "⌂" },
+      { id: "appointments", label: language === "fr" ? "Rendez-vous" : "Appointments", mark: "◷" },
       { id: "todos", label: language === "fr" ? "Tâches" : "To-dos", mark: "✓" },
-      { id: "diet", label: language === "fr" ? "Alimentation" : "Diet", mark: "D" },
-      { id: "exercises", label: language === "fr" ? "Exercices" : "Exercises", mark: "E" },
+      { id: "diet", label: language === "fr" ? "Alimentation" : "Diet", mark: "○" },
+      { id: "exercises", label: language === "fr" ? "Bibliothèque" : "Library", mark: "▶" },
     ];
     return [
-      { id: "today", label: t.today, mark: "A" },
-      { id: "communicate", label: t.communicate, mark: "C" },
-      { id: "practice", label: t.practice, mark: "P" },
-      { id: "plan", label: language === "fr" ? "Mon plan" : "My plan", mark: "A" },
-      { id: "progress", label: t.progress, mark: "M" },
+      { id: "today", label: t.today, mark: "⌂" },
+      { id: "practice", label: t.practice, mark: "▶" },
+      { id: "communicate", label: t.communicate, mark: "••" },
+      { id: "plan", label: language === "fr" ? "Mon plan" : "My plan", mark: "☷" },
+      { id: "progress", label: t.progress, mark: "↗" },
     ];
   }, [t, role, language]);
 
@@ -298,8 +315,11 @@ export default function ElanApp() {
   const boardResults = (boardQuery ? boardThemes.flatMap((themeItem) => themeItem.messages) : activeBoardTheme.messages)
     .filter((message) => !boardQuery || `${message[0]} ${message[1]}`.toLocaleLowerCase(language === "fr" ? "fr-CA" : "en-CA").includes(boardQuery));
 
+  const patientPageTitle = view === "today" ? t.greeting : view === "practice" ? t.practice : view === "communicate" ? (language === "fr" ? "Communiquer" : "Communicate") : view === "plan" ? (language === "fr" ? "Mon plan" : "My plan") : view === "progress" ? (language === "fr" ? "Mes progrès" : "My progress") : (language === "fr" ? "Aide et confidentialité" : "Help and privacy");
+
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">{language === "fr" ? "Aller au contenu principal" : "Skip to main content"}</a>
       <aside className="side-nav" aria-label={language === "fr" ? "Navigation principale" : "Main navigation"}>
         <button className="brand" onClick={() => { if (role === "patient") setView("today"); else setPortalTab("overview"); setSessionOpen(false); }} aria-label="Élan, accueil">
           <span className="brand-mark">é</span>
@@ -307,7 +327,7 @@ export default function ElanApp() {
         </button>
         <nav>
           {nav.map((item) => (
-            <button key={item.id} className={(role === "patient" ? view === item.id : portalTab === item.id) ? "nav-item active" : "nav-item"} onClick={() => { setSessionOpen(false); if (role === "patient") { setView(item.id as View); if (item.id === "communicate") setBoardOpen(true); } else setPortalTab(item.id); }}>
+            <button key={item.id} aria-current={(role === "patient" ? view === item.id : portalTab === item.id) ? "page" : undefined} className={(role === "patient" ? view === item.id : portalTab === item.id) ? "nav-item active" : "nav-item"} onClick={() => { setSessionOpen(false); if (role === "patient") { setView(item.id as View); if (item.id === "communicate") setBoardOpen(true); } else setPortalTab(item.id); }}>
               <span className="nav-mark" aria-hidden="true">{item.mark}</span>
               <span>{item.label}</span>
             </button>
@@ -319,27 +339,25 @@ export default function ElanApp() {
         </button>
       </aside>
 
-      <main className="main-content">
+      <main className="main-content" id="main-content" tabIndex={-1}>
         <header className="topbar">
           <div>
             <p className="eyebrow">{role === "patient" ? t.goodMorning : role === "family" ? (language === "fr" ? "Mode partenaire" : "Partner mode") : (language === "fr" ? "Administration du plan" : "Plan administration")}</p>
-            <h1>{sessionOpen ? (language === "fr" ? "Ma séance" : "My session") : role === "patient" ? t.greeting : role === "family" ? (language === "fr" ? "Bonjour, Sylvie" : "Hello, Sylvie") : (language === "fr" ? "Plan de Salah" : "Salah’s plan")}</h1>
+            <h1>{sessionOpen ? (language === "fr" ? "Ma séance" : "My session") : role === "patient" ? patientPageTitle : role === "family" ? (language === "fr" ? "Bonjour, Sylvie" : "Hello, Sylvie") : (language === "fr" ? "Plan de Salah" : "Salah’s plan")}</h1>
           </div>
           <div className="top-actions">
-            <div className="role-switch" role="group" aria-label={language === "fr" ? "Changer de rôle" : "Change role"}>
-              <button className={role === "patient" ? "selected" : ""} onClick={() => selectRole("patient")}>{language === "fr" ? "Patient" : "Patient"}</button>
-              <button className={role === "family" ? "selected" : ""} onClick={() => selectRole("family")}>{language === "fr" ? "Proche" : "Family"}</button>
-              <button className={role === "admin" ? "selected" : ""} onClick={() => selectRole("admin")}>{language === "fr" ? "Admin" : "Admin"}</button>
-            </div>
+            <label className="role-picker"><span>{language === "fr" ? "Espace" : "Space"}</span><select value={role} onChange={(event) => selectRole(event.target.value as Role)} aria-label={language === "fr" ? "Choisir l’espace utilisateur" : "Choose user space"}><option value="patient">{language === "fr" ? "Salah" : "Salah"}</option><option value="family">{language === "fr" ? "Proche" : "Family"}</option><option value="admin">{language === "fr" ? "Administration" : "Administration"}</option></select></label>
             <div className="language-switch" role="group" aria-label={language === "fr" ? "Choisir la langue" : "Choose language"}>
               <button className={language === "fr" ? "selected" : ""} onClick={() => setLanguage("fr")} aria-pressed={language === "fr"}>FR</button>
               <button className={language === "en" ? "selected" : ""} onClick={() => setLanguage("en")} aria-pressed={language === "en"}>EN</button>
             </div>
+            <button className="text-size-button" onClick={toggleTextSize} aria-label={textSize === "standard" ? (language === "fr" ? "Agrandir le texte" : "Make text larger") : (language === "fr" ? "Taille de texte standard" : "Use standard text size")} aria-pressed={textSize === "large"}><span aria-hidden="true">{textSize === "standard" ? "A+" : "A"}</span><small>{textSize === "standard" ? (language === "fr" ? "Agrandir" : "Larger") : (language === "fr" ? "Standard" : "Standard")}</small></button>
             <button className="theme-button" onClick={toggleTheme} aria-label={theme === "day" ? (language === "fr" ? "Activer le thème de nuit" : "Use night theme") : (language === "fr" ? "Activer le thème de jour" : "Use day theme")} aria-pressed={theme === "night"}><span aria-hidden="true">{theme === "day" ? "☾" : "☀"}</span><small>{theme === "day" ? (language === "fr" ? "Nuit" : "Night") : (language === "fr" ? "Jour" : "Day")}</small></button>
             <button className="audio-button" onClick={() => speakMessage(sessionOpen ? (language === "fr" ? "Ma séance" : "My session") : `${t.greeting}. ${t.subtitle}`)} aria-label={language === "fr" ? "Écouter cette page" : "Listen to this page"}>
               <span aria-hidden="true">)))</span>
               {language === "fr" ? "Écouter" : "Listen"}
             </button>
+            {role === "patient" && <button className="help-button" onClick={() => { setSessionOpen(false); setView("privacy"); }}><span aria-hidden="true">?</span>{language === "fr" ? "Aide" : "Help"}</button>}
           </div>
         </header>
 
@@ -368,7 +386,7 @@ export default function ElanApp() {
         ) : role === "admin" ? (
           <MyPlan key={portalTab} language={language} initialTab={portalTab} actorRole="admin" attemptCount={productData.attempts.length} />
         ) : view === "today" ? (
-          <Today language={language} onStart={beginSession} onLibrary={() => setView("practice")} onAppointments={() => setView("plan")} />
+          <Today language={language} onStart={beginSession} onLibrary={() => setView("practice")} onPlan={() => setView("plan")} onBoard={() => setBoardOpen(true)} onProgress={() => setView("progress")} attemptCount={productData.attempts.length} />
         ) : view === "progress" ? (
           <Progress language={language} />
         ) : view === "practice" ? (
@@ -398,7 +416,7 @@ export default function ElanApp() {
               <button className="close-button" onClick={() => setBoardOpen(false)} aria-label={language === "fr" ? "Fermer" : "Close"}>×</button>
             </div>
             <p className="board-instruction">{language === "fr" ? "Choisissez un thème, puis touchez un message pour le faire lire à voix haute." : "Choose a theme, then tap a message to say it aloud."}</p>
-            <label className="board-search"><span>⌕</span><input value={boardSearch} onChange={(event) => setBoardSearch(event.target.value)} placeholder={language === "fr" ? "Rechercher parmi 60 messages" : "Search 60 messages"} /></label>
+            <label className="board-search"><span aria-hidden="true">⌕</span><input value={boardSearch} onChange={(event) => setBoardSearch(event.target.value)} aria-label={language === "fr" ? "Rechercher dans les messages" : "Search messages"} placeholder={language === "fr" ? "Rechercher parmi 60 messages" : "Search 60 messages"} /></label>
             <div className="board-theme-tabs" role="tablist" aria-label={language === "fr" ? "Thèmes du tableau" : "Board themes"}>
               {boardThemes.map((themeItem) => <button key={themeItem.id} role="tab" aria-selected={boardTheme === themeItem.id} className={boardTheme === themeItem.id && !boardQuery ? "selected" : ""} onClick={() => { setBoardTheme(themeItem.id); setBoardSearch(""); }}><span>{themeItem.icon}</span>{language === "fr" ? themeItem.fr : themeItem.en}</button>)}
             </div>
@@ -433,58 +451,50 @@ export default function ElanApp() {
   );
 }
 
-function Today({ language, onStart, onLibrary, onAppointments }: { language: Language; onStart: () => void; onLibrary: () => void; onAppointments: () => void }) {
+function Today({ language, onStart, onLibrary, onPlan, onBoard, onProgress, attemptCount }: { language: Language; onStart: () => void; onLibrary: () => void; onPlan: () => void; onBoard: () => void; onProgress: () => void; attemptCount: number }) {
   const t = copy[language];
-  return (
-    <div className="dashboard">
-      <section className="hero-card">
-        <div className="hero-copy">
-          <span className="status-chip"><span className="status-dot" /> {language === "fr" ? "Plan personnalisé prêt" : "Personalized plan ready"}</span>
-          <h2>{t.ready}</h2>
-          <p>{t.subtitle}</p>
-          <div className="session-summary">
-            <div className="time-medallion"><strong>18</strong><span>min</span></div>
-            <div><strong>{t.session}</strong><span>{t.minutes}</span></div>
-          </div>
-          <button className="primary-button" onClick={onStart}>{t.start}<span aria-hidden="true">→</span></button>
-          <button className="text-button" onClick={onLibrary}>{t.shorter}</button>
-        </div>
-        <div className="atlas-art" aria-label={language === "fr" ? "Votre atlas de récupération prend forme" : "Your recovery atlas is taking shape"}>
-          <div className="orbit orbit-one" />
-          <div className="orbit orbit-two" />
-          <div className="atlas-centre"><span>3</span><small>{language === "fr" ? "repères" : "places"}</small></div>
-          <div className="atlas-point point-one"><span>V</span><small>{language === "fr" ? "Voix" : "Voice"}</small></div>
-          <div className="atlas-point point-two"><span>M</span><small>{language === "fr" ? "Maison" : "Home"}</small></div>
-          <div className="atlas-point point-three"><span>I</span><small>{language === "fr" ? "Indépendance" : "Independence"}</small></div>
-        </div>
-      </section>
+  return <div className="dashboard accessible-home">
+    <section className="home-welcome" aria-labelledby="home-question">
+      <div className="home-welcome-copy">
+        <span className="status-chip"><span className="status-dot" /> {language === "fr" ? "Votre plan est prêt" : "Your plan is ready"}</span>
+        <h2 id="home-question">{language === "fr" ? "Que voulez-vous faire aujourd’hui?" : "What would you like to do today?"}</h2>
+        <p>{language === "fr" ? "Commencez la séance prévue ou choisissez une activité qui correspond à votre énergie." : "Start the planned session or choose an activity that matches your energy."}</p>
+        <button className="home-primary-action" onClick={onStart}><span className="home-action-icon" aria-hidden="true">▶</span><span><b>{t.start}</b><small>{language === "fr" ? "18 minutes · pauses permises" : "18 minutes · breaks are welcome"}</small></span><span className="home-action-arrow" aria-hidden="true">→</span></button>
+        <button className="home-secondary-action" onClick={onLibrary}>{language === "fr" ? "Choisir une autre séance" : "Choose another session"}<span aria-hidden="true">→</span></button>
+      </div>
+      <button className="home-board-callout" onClick={onBoard}>
+        <span className="home-board-icon" aria-hidden="true">•••</span>
+        <span><small>{language === "fr" ? "Toujours disponible" : "Always available"}</small><b>{language === "fr" ? "J’ai besoin de communiquer" : "I need to communicate"}</b><em>{language === "fr" ? "Ouvrir le tableau de 60 messages" : "Open the 60-message board"}</em></span>
+        <span aria-hidden="true">→</span>
+      </button>
+    </section>
 
-      <section className="lower-grid">
-        <div className="plan-card">
-          <div className="section-heading"><div><p className="eyebrow">{t.plan}</p><h3>{language === "fr" ? "Trois activités simples" : "Three simple activities"}</h3></div><span className="count-badge">3</span></div>
-          <Activity index="01" tone="plum" title={t.words} subtitle={t.wordsSub} label={language === "fr" ? "COMMUNICATION" : "COMMUNICATION"} onClick={onStart} />
-          <Activity index="02" tone="blue" title={t.movement} subtitle={t.movementSub} label={language === "fr" ? "MOUVEMENT" : "MOVEMENT"} helper={language === "fr" ? "Quelqu’un doit être près de vous" : "Someone must be nearby"} onClick={onStart} />
-          <Activity index="03" tone="gold" title={t.mission} subtitle={t.missionSub} label={language === "fr" ? "VIE QUOTIDIENNE" : "DAILY LIFE"} onClick={onStart} />
-        </div>
+    <section className="home-shortcuts" aria-labelledby="home-shortcuts-title">
+      <div className="home-section-heading"><div><p className="eyebrow">{language === "fr" ? "Accès rapide" : "Quick access"}</p><h3 id="home-shortcuts-title">{language === "fr" ? "Retrouvez facilement vos outils" : "Find your tools easily"}</h3></div></div>
+      <div className="home-shortcut-grid">
+        <button onClick={onLibrary}><span className="shortcut-icon sessions" aria-hidden="true">▶</span><span><b>{language === "fr" ? "Mes séances" : "My sessions"}</b><small>{language === "fr" ? "Choisir par durée et effort" : "Choose by time and effort"}</small></span><span aria-hidden="true">→</span></button>
+        <button onClick={onPlan}><span className="shortcut-icon plan" aria-hidden="true">☷</span><span><b>{language === "fr" ? "Mon plan" : "My plan"}</b><small>{language === "fr" ? "Rendez-vous, tâches et alimentation" : "Appointments, to-dos, and diet"}</small></span><span aria-hidden="true">→</span></button>
+        <button onClick={onProgress}><span className="shortcut-icon progress" aria-hidden="true">↗</span><span><b>{language === "fr" ? "Mes progrès" : "My progress"}</b><small>{attemptCount ? (language === "fr" ? `${attemptCount} séances enregistrées` : `${attemptCount} sessions recorded`) : (language === "fr" ? "Voir ce qui devient plus facile" : "See what is becoming easier")}</small></span><span aria-hidden="true">→</span></button>
+      </div>
+    </section>
 
-        <aside className="insight-column">
-          <div className="rhythm-card">
-            <div className="week-dots"><span className="done">L</span><span className="done">M</span><span className="today-dot">M</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
-            <h3>{t.rhythm}</h3><p className="rhythm-value">{t.rhythmSub}</p><p>{t.noStreak}</p>
-          </div>
-          <button className="appointment-card" onClick={onAppointments}>
-            <p className="eyebrow">{t.next}</p>
-            <div className="appointment-time"><strong>16</strong><span>{language === "fr" ? "JUIL." : "JUL."}<br />10:30</span></div>
-            <p>{t.clinician}</p>
-          </button>
-        </aside>
-      </section>
-    </div>
-  );
-}
+    <section className="home-details" aria-labelledby="home-plan-title">
+      <article className="home-today-card card-surface">
+        <div className="home-section-heading"><div><p className="eyebrow">{t.plan}</p><h3 id="home-plan-title">{language === "fr" ? "Votre séance en 3 étapes" : "Your session in 3 steps"}</h3></div><span className="home-duration">18 min</span></div>
+        <ol className="home-step-list">
+          <li><span>1</span><div><b>{t.words}</b><small>{t.wordsSub}</small></div></li>
+          <li><span>2</span><div><b>{t.movement}</b><small>{language === "fr" ? "Avec une personne près de vous" : "With someone nearby"}</small></div></li>
+          <li><span>3</span><div><b>{t.mission}</b><small>{t.missionSub}</small></div></li>
+        </ol>
+        <button className="home-start-again" onClick={onStart}>{t.start}<span aria-hidden="true">→</span></button>
+      </article>
 
-function Activity({ index, tone, title, subtitle, label, helper, onClick }: { index: string; tone: string; title: string; subtitle: string; label: string; helper?: string; onClick: () => void }) {
-  return <button className="activity-row" onClick={onClick}><div className={`activity-index ${tone}`}>{index}</div><div className="activity-copy"><small>{label}</small><h4>{title}</h4><p>{subtitle}</p>{helper && <span className="helper-label"><span>!</span>{helper}</span>}</div><span className="row-arrow">›</span></button>;
+      <div className="home-side-stack">
+        <button className="home-appointment card-surface" onClick={onPlan}><span className="appointment-date"><strong>16</strong><small>{language === "fr" ? "JUIL." : "JUL."}</small></span><span><small>{t.next}</small><b>10:30 · {t.clinician}</b><em>{language === "fr" ? "Voir dans Mon plan" : "View in My plan"}</em></span><span aria-hidden="true">→</span></button>
+        <article className="home-rhythm card-surface"><div><p className="eyebrow">{t.rhythm}</p><h3>{t.rhythmSub}</h3><p>{t.noStreak}</p></div><div className="home-week" aria-label={language === "fr" ? "Trois journées de pratique cette semaine" : "Three practice days this week"}><span className="done">L</span><span className="done">M</span><span className="today-dot">M</span><span>J</span><span>V</span><span>S</span><span>D</span></div></article>
+      </div>
+    </section>
+  </div>;
 }
 
 function Session({ language, step, setStep, energy, setEnergy, cue, setCue, recording, onRecord, recordingStatus, helper, setHelper, onClose, onBoard, onComplete }: { language: Language; step: SessionStep; setStep: (step: SessionStep) => void; energy: number | null; setEnergy: (n: number) => void; cue: number; setCue: (n: number) => void; recording: boolean; onRecord: () => void; recordingStatus: "idle" | "saving" | "saved" | "error"; helper: boolean; setHelper: (n: boolean) => void; onClose: () => void; onBoard: () => void; onComplete: () => void }) {

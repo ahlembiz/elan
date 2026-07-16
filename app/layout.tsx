@@ -6,8 +6,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const title = "Élan — Votre réadaptation, à votre rythme";
-  const description = "Un compagnon bilingue de réadaptation à domicile pour pratiquer la communication et le mouvement en toute confiance.";
+  const title = "Élan — Votre réadaptation, simplement";
+  const description = "Un compagnon bilingue, lisible et accessible pour vos séances, votre communication et votre plan de réadaptation à domicile.";
 
   return {
     metadataBase: new URL(`${protocol}://${host}`),
@@ -18,7 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
       description,
       type: "website",
       locale: "fr_CA",
-      images: [{ url: "/og.png", width: 1536, height: 1024, alt: "Élan — Votre réadaptation, à votre rythme" }],
+      images: [{ url: "/og.png", width: 1536, height: 1024, alt: "Élan — Votre réadaptation, simplement" }],
     },
     twitter: { card: "summary_large_image", title, description, images: ["/og.png"] },
   };

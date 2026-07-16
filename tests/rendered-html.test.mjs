@@ -70,3 +70,24 @@ test("visible product CTAs are wired and day/night preference persists", async (
   assert.match(css, /\.session-builder/);
   assert.match(css, /\.board-theme-tabs/);
 });
+
+test("the patient home and navigation expose older-adult accessibility essentials", async () => {
+  const [app, css] = await Promise.all([
+    readFile(new URL("ElanApp.tsx", appRoot), "utf8"),
+    readFile(new URL("globals.css", appRoot), "utf8"),
+  ]);
+
+  for (const destination of ["Accueil", "Mes séances", "Tableau", "Mon plan", "Progrès"]) assert.match(app, new RegExp(destination));
+  for (const homeAction of ["Commencer ma séance", "J’ai besoin de communiquer", "Choisir une autre séance"]) assert.match(app, new RegExp(homeAction));
+  assert.match(app, /className="skip-link" href="#main-content"/);
+  assert.match(app, /aria-current=/);
+  assert.match(app, /className="role-picker"/);
+  assert.match(app, /className="help-button"/);
+  assert.match(app, /Rechercher dans les messages/);
+  assert.match(app, /localStorage\.setItem\("elan-text-size", nextSize\)/);
+  assert.match(app, /aria-pressed=\{textSize === "large"\}/);
+  assert.match(css, /html\[data-text-size="large"\]/);
+  assert.match(css, /@media \(max-width: 860px\)/);
+  assert.match(css, /\.nav-item \{ min-width: 0; min-height: 78px/);
+  assert.match(css, /@media \(forced-colors: active\)/);
+});
