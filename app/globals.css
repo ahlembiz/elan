@@ -1,5 +1,3 @@
-@import "tailwindcss";
-
 :root {
   --ink: #1d2d2a;
   --muted: #4b5d58;
@@ -226,18 +224,42 @@ html[data-theme="night"] :is(.exercise-metrics > span, .session-preview li, .ses
 .topbar > div:first-child { min-width: min(100%, 280px); }
 .topbar h1 { line-height: 1.12; }
 .top-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
-.role-picker { min-height: 52px; display: grid; grid-template-columns: auto minmax(100px, 1fr); align-items: center; gap: 8px; padding: 5px 8px 5px 12px; border: 1px solid #aebdb7; border-radius: 14px; background: var(--paper); }
-.role-picker > span { color: var(--muted); font-size: .825rem; font-weight: 900; text-transform: uppercase; letter-spacing: .05em; }
-.role-picker select { min-height: 40px; max-width: 155px; border: 0; background: transparent; color: var(--ink); font-weight: 800; cursor: pointer; }
+.role-session { min-height: 52px; display: flex; align-items: center; gap: 9px; padding: 5px 13px 5px 7px; border: 1px solid #aebdb7; border-radius: 14px; background: var(--paper); }
+.role-session > span { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; background: var(--mint); color: var(--teal); font-size: .8rem; font-weight: 900; }
+.role-session strong { font-size: .9rem; }
 .language-switch { min-height: 52px; border-color: #aebdb7; background: var(--paper); }
 .language-switch button { min-width: 52px; min-height: 42px; font-size: .85rem; }
-.theme-button, .text-size-button, .audio-button, .help-button { min-height: 52px; border: 1px solid #aebdb7; border-radius: 14px; background: var(--paper); color: var(--teal); }
+.theme-button, .text-size-button, .audio-button, .help-button, .sign-out-button { min-height: 52px; border: 1px solid #aebdb7; border-radius: 14px; background: var(--paper); color: var(--teal); }
 .text-size-button { min-width: 112px; display: grid; grid-template-columns: 28px 1fr; align-items: center; gap: 5px; padding: 0 10px; cursor: pointer; }
 .text-size-button > span { font-family: Georgia, serif; font-size: 1.25rem; font-weight: 800; }
 .text-size-button small, .theme-button small { font-size: .72rem; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; }
 .audio-button { font-size: .9rem; }
 .help-button { min-width: 80px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; font-weight: 900; cursor: pointer; }
 .help-button > span { width: 26px; height: 26px; display: grid; place-items: center; border: 2px solid currentColor; border-radius: 50%; }
+.sign-out-button { padding: 0 14px; font-size: .85rem; font-weight: 900; cursor: pointer; }
+
+/* Accessible, role-based sign in */
+.login-page { min-height: 100vh; display: grid; place-items: center; padding: 28px 18px; background: radial-gradient(circle at 15% 5%, var(--mint), transparent 28%), var(--cream); }
+.login-card { width: min(100%, 680px); padding: clamp(28px, 5vw, 52px); border: 1px solid var(--line); border-radius: 30px; background: var(--paper); box-shadow: var(--shadow); }
+.login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 34px; color: var(--teal); font-family: Georgia, serif; font-size: 2rem; font-weight: 800; }
+.login-brand > span { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 48% 52% 44% 56%; background: var(--teal); color: white; }
+.login-card h1 { margin-bottom: 8px; font-size: clamp(2.6rem, 7vw, 4.4rem); }
+.login-intro { color: var(--muted); }
+.login-card fieldset { margin: 30px 0 24px; padding: 0; border: 0; }
+.login-card legend, .login-code > span { margin-bottom: 10px; color: var(--ink); font-weight: 900; }
+.login-accounts { display: grid; gap: 10px; }
+.login-account { min-height: 78px; display: grid; grid-template-columns: 28px 50px 1fr; align-items: center; gap: 12px; padding: 10px 16px; border: 2px solid var(--line); border-radius: 16px; cursor: pointer; }
+.login-account.selected { border-color: var(--teal); background: var(--mint); }
+.login-account input { width: 22px; height: 22px; accent-color: var(--teal); }
+.login-avatar { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; background: var(--teal); color: white; font-size: .8rem; font-weight: 900; }
+.login-account strong, .login-account small { display: block; }
+.login-account small { color: var(--muted); }
+.login-code { display: grid; }
+.login-code input { min-height: 60px; padding: 10px 16px; border: 2px solid #aebdb7; border-radius: 14px; background: white; font-size: 1.3rem; letter-spacing: .1em; }
+.login-error { margin: 14px 0 0; padding: 12px 14px; border-radius: 10px; background: #f8ddd7; color: #7a271a; font-weight: 800; }
+.login-submit { width: 100%; min-height: 62px; margin-top: 20px; border: 0; border-radius: 14px; background: var(--teal); color: white; font-weight: 900; cursor: pointer; }
+.login-submit:disabled { opacity: .65; cursor: wait; }
+.login-development { margin: 24px 0 0; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: .82rem; }
 
 .accessible-home { max-width: 1280px; }
 .home-welcome { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, .6fr); gap: 26px; padding: clamp(28px, 4vw, 52px); border-radius: 30px; background: #184f4a; color: white; box-shadow: var(--shadow); }
@@ -312,7 +334,7 @@ html[data-theme="night"] :is(.exercise-metrics > span, .session-preview li, .ses
 html[data-theme="night"] .home-welcome { background: #173b34; }
 html[data-theme="night"] .home-board-callout { background: #f6f1e8; color: #173f3a; border-color: #d6e1dc; }
 html[data-theme="night"] .home-board-callout:hover { background: #ebe3d5; }
-html[data-theme="night"] :is(.role-picker, .text-size-button, .help-button, .home-shortcut-grid button, .home-appointment) { background: var(--paper); color: var(--ink); border-color: var(--line); }
+html[data-theme="night"] :is(.role-session, .text-size-button, .help-button, .sign-out-button, .home-shortcut-grid button, .home-appointment) { background: var(--paper); color: var(--ink); border-color: var(--line); }
 html[data-theme="night"] .home-start-again,
 html[data-theme="night"] .home-week .done { background: #76b7a7; color: #102d27; }
 
@@ -349,7 +371,7 @@ html[data-theme="night"] .home-week .done { background: #76b7a7; color: #102d27;
   .main-content { padding: 0 clamp(16px, 4vw, 30px) 120px; }
   .topbar { align-items: flex-start; margin-bottom: 26px; }
   .top-actions { width: 100%; flex-direction: row; align-items: center; justify-content: flex-start; }
-  .role-picker { flex: 1 1 210px; }
+  .role-session { flex: 1 1 210px; }
   .language-switch { display: flex; }
   .theme-button small { display: block; }
   .quick-board { right: 14px; bottom: 108px; min-height: 54px; }
@@ -361,7 +383,7 @@ html[data-theme="night"] .home-week .done { background: #76b7a7; color: #102d27;
   body { font-size: 1.0625rem; }
   .topbar h1 { font-size: 2rem; }
   .top-actions { gap: 7px; }
-  .role-picker { flex-basis: 100%; }
+  .role-session { flex-basis: 100%; }
   .text-size-button { min-width: 112px; }
   .theme-button { min-width: 88px; }
   .audio-button { min-width: 96px; padding-inline: 13px; }

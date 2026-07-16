@@ -1,20 +1,23 @@
 import { eq } from "drizzle-orm";
-import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db";
+import { requireApiSession } from "../../../lib/session";
 import { auditEvents, consents } from "../../../db/schema";
+import { ensureProductWorkspace } from "../product/route";
 
 const PATIENT_ID = "patient-salah";
 const allowedTypes = new Set(["voice_recording", "video_recording", "model_improvement"]);
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireApiSession(request, ["patient"]);
+    if ("response" in auth) return auth.response;
+    await ensureProductWorkspace();
     const payload = await request.json() as { consentType?: string; granted?: boolean };
     const consentType = String(payload.consentType ?? "");
     if (!allowedTypes.has(consentType) || typeof payload.granted !== "boolean") {
       return Response.json({ error: "A valid consent choice is required" }, { status: 400 });
     }
-    const user = await getChatGPTUser();
-    const actorEmail = user?.email ?? "salah@elan.local";
+    const actorEmail = auth.session.email;
     const id = `${PATIENT_ID}:${consentType}`;
     const db = getDb();
     await db.insert(consents).values({ id, patientId: PATIENT_ID, consentType: consentType as "voice_recording" | "video_recording" | "model_improvement", granted: payload.granted, actorEmail, updatedAt: new Date().toISOString() }).onConflictDoUpdate({ target: consents.id, set: { granted: payload.granted, actorEmail, updatedAt: new Date().toISOString() } });

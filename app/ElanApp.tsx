@@ -10,6 +10,9 @@ type SessionStep = "checkin" | "words" | "movement" | "mission" | "complete";
 type Role = "patient" | "family" | "admin";
 type Theme = "day" | "night";
 type TextSize = "standard" | "large";
+type BoardThemeId = "essential" | "health" | "feelings" | "food" | "people" | "plans";
+type BoardMessage = readonly [fr: string, en: string, symbol: string];
+type BoardTheme = { id: BoardThemeId; icon: string; fr: string; en: string; messages: readonly BoardMessage[] };
 
 type ProductData = {
   profile?: { preferredName: string; primaryGoal: string; supervisionSummary: string; nextReviewDate: string };
@@ -94,7 +97,7 @@ const copy = {
   },
 };
 
-const boardThemes = [
+const boardThemes: readonly BoardTheme[] = [
   { id: "essential", icon: "✓", fr: "Essentiel", en: "Essentials", messages: [
     ["Oui", "Yes", "✓"], ["Non", "No", "×"], ["Je ne sais pas", "I don’t know", "?"], ["Attendez, s’il vous plaît", "Please wait", "…"], ["Répétez, s’il vous plaît", "Please repeat", "↺"],
     ["Je comprends", "I understand", "✓"], ["Je ne comprends pas", "I don’t understand", "?"], ["Montrez-moi", "Show me", "☝"], ["Écrivez-le", "Write it down", "✎"], ["Merci", "Thank you", "♥"],
@@ -119,11 +122,11 @@ const boardThemes = [
     ["Quelle heure est-il?", "What time is it?", "◷"], ["Quel jour sommes-nous?", "What day is it?", "D"], ["Qu’est-ce qui est prévu?", "What is planned?", "?"], ["J’ai un rendez-vous", "I have an appointment", "R"], ["Je veux changer le plan", "I want to change the plan", "↺"],
     ["Maintenant", "Now", "N"], ["Plus tard", "Later", "L"], ["Demain", "Tomorrow", "D"], ["Je suis prêt", "I am ready", "✓"], ["Je ne suis pas prêt", "I am not ready", "×"],
   ] },
-] as const;
+];
 
-export default function ElanApp() {
+export default function ElanApp({ initialRole, currentName }: { initialRole: Role; currentName: string }) {
   const [language, setLanguage] = useState<Language>("fr");
-  const [role, setRole] = useState<Role>("patient");
+  const role = initialRole;
   const [theme, setTheme] = useState<Theme>("day");
   const [textSize, setTextSize] = useState<TextSize>("standard");
   const [view, setView] = useState<View>("today");
@@ -140,7 +143,7 @@ export default function ElanApp() {
   const [consentOpen, setConsentOpen] = useState(false);
   const [helper, setHelper] = useState(false);
   const [spoken, setSpoken] = useState<string | null>(null);
-  const [boardTheme, setBoardTheme] = useState<(typeof boardThemes)[number]["id"]>("essential");
+  const [boardTheme, setBoardTheme] = useState<BoardThemeId>("essential");
   const [boardSearch, setBoardSearch] = useState("");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -210,16 +213,14 @@ export default function ElanApp() {
   }, [t, role, language]);
 
   const roleIdentity = role === "patient"
-    ? { initials: "SL", name: "Salah", detail: language === "fr" ? "Mon profil" : "My profile" }
+    ? { initials: "SL", name: currentName, detail: language === "fr" ? "Mon profil" : "My profile" }
     : role === "family"
-      ? { initials: "SY", name: "Sylvie", detail: language === "fr" ? "Partenaire" : "Partner" }
-      : { initials: "ÉA", name: language === "fr" ? "Équipe Élan" : "Élan team", detail: language === "fr" ? "Administration" : "Administration" };
+      ? { initials: "SY", name: currentName, detail: language === "fr" ? "Partenaire" : "Partner" }
+      : { initials: "ÉA", name: currentName, detail: language === "fr" ? "Administration" : "Administration" };
 
-  const selectRole = (nextRole: Role) => {
-    setRole(nextRole);
-    setSessionOpen(false);
-    setPortalTab("overview");
-    if (nextRole === "patient") setView("today");
+  const signOut = async () => {
+    await fetch("/api/session", { method: "DELETE" });
+    window.location.assign("/login");
   };
 
   const beginSession = () => {
@@ -346,7 +347,7 @@ export default function ElanApp() {
             <h1>{sessionOpen ? (language === "fr" ? "Ma séance" : "My session") : role === "patient" ? patientPageTitle : role === "family" ? (language === "fr" ? "Bonjour, Sylvie" : "Hello, Sylvie") : (language === "fr" ? "Plan de Salah" : "Salah’s plan")}</h1>
           </div>
           <div className="top-actions">
-            <label className="role-picker"><span>{language === "fr" ? "Espace" : "Space"}</span><select value={role} onChange={(event) => selectRole(event.target.value as Role)} aria-label={language === "fr" ? "Choisir l’espace utilisateur" : "Choose user space"}><option value="patient">{language === "fr" ? "Salah" : "Salah"}</option><option value="family">{language === "fr" ? "Proche" : "Family"}</option><option value="admin">{language === "fr" ? "Administration" : "Administration"}</option></select></label>
+            <div className="role-session" aria-label={`${language === "fr" ? "Espace" : "Space"}: ${roleIdentity.name}`}><span>{roleIdentity.initials}</span><strong>{roleIdentity.name}</strong></div>
             <div className="language-switch" role="group" aria-label={language === "fr" ? "Choisir la langue" : "Choose language"}>
               <button className={language === "fr" ? "selected" : ""} onClick={() => setLanguage("fr")} aria-pressed={language === "fr"}>FR</button>
               <button className={language === "en" ? "selected" : ""} onClick={() => setLanguage("en")} aria-pressed={language === "en"}>EN</button>
@@ -358,6 +359,7 @@ export default function ElanApp() {
               {language === "fr" ? "Écouter" : "Listen"}
             </button>
             {role === "patient" && <button className="help-button" onClick={() => { setSessionOpen(false); setView("privacy"); }}><span aria-hidden="true">?</span>{language === "fr" ? "Aide" : "Help"}</button>}
+            <button className="sign-out-button" onClick={signOut}>{language === "fr" ? "Quitter" : "Sign out"}</button>
           </div>
         </header>
 

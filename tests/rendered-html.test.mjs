@@ -4,15 +4,18 @@ import test from "node:test";
 
 const appRoot = new URL("../app/", import.meta.url);
 
-test("My Plan exposes every category, all three authors, and durable sessions", async () => {
-  const [plan, api, schema] = await Promise.all([
+test("My Plan exposes every category, server-derived authors, and durable sessions", async () => {
+  const [plan, api, schema, session] = await Promise.all([
     readFile(new URL("MyPlan.tsx", appRoot), "utf8"),
     readFile(new URL("api/plan/route.ts", appRoot), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/session.ts", import.meta.url), "utf8"),
   ]);
 
   for (const category of ["appointments", "todos", "diet", "exercises"]) assert.match(plan, new RegExp(`id: "${category}"`));
-  assert.match(api, /ACTOR_ROLES = new Set\(\["patient", "family", "admin"\]\)/);
+  assert.match(api, /const createdByRole = auth\.session\.role/);
+  assert.doesNotMatch(api, /payload\.createdByRole/);
+  assert.match(session, /httpOnly: true/);
   assert.match(api, /payload\.kind === "session"/);
   assert.match(api, /INSERT INTO plan_sessions/);
   assert.match(api, /plan_session\.created/);
@@ -81,7 +84,8 @@ test("the patient home and navigation expose older-adult accessibility essential
   for (const homeAction of ["Commencer ma séance", "J’ai besoin de communiquer", "Choisir une autre séance"]) assert.match(app, new RegExp(homeAction));
   assert.match(app, /className="skip-link" href="#main-content"/);
   assert.match(app, /aria-current=/);
-  assert.match(app, /className="role-picker"/);
+  assert.match(app, /className="role-session"/);
+  assert.match(app, /className="sign-out-button"/);
   assert.match(app, /className="help-button"/);
   assert.match(app, /Rechercher dans les messages/);
   assert.match(app, /localStorage\.setItem\("elan-text-size", nextSize\)/);
