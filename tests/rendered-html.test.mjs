@@ -97,11 +97,13 @@ test("the patient home and navigation expose older-adult accessibility essential
 });
 
 test("Vercel can deploy the complete frontend without database services", async () => {
-  const [packageJson, envCheck, planApi, productApi] = await Promise.all([
+  const [packageJson, envCheck, planApi, productApi, login, sessionApi] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../scripts/check-vercel-env.mjs", import.meta.url), "utf8"),
     readFile(new URL("api/plan/route.ts", appRoot), "utf8"),
     readFile(new URL("api/product/route.ts", appRoot), "utf8"),
+    readFile(new URL("login/LoginForm.tsx", appRoot), "utf8"),
+    readFile(new URL("api/session/route.ts", appRoot), "utf8"),
   ]);
 
   assert.match(packageJson, /"vercel-build": "npm run env:check && next build"/);
@@ -110,4 +112,6 @@ test("Vercel can deploy the complete frontend without database services", async 
   assert.match(planApi, /if \(usesFrontendData\(\)\) return Response\.json\(readFrontendPlan\(\)\)/);
   assert.match(planApi, /library: exerciseCatalog/);
   assert.match(productApi, /if \(usesFrontendData\(\)\) return Response\.json\(frontendProductData\)/);
+  assert.doesNotMatch(login, /Code d’accès|type="password"|11111111/);
+  assert.doesNotMatch(sessionApi, /verifyAccessCode|payload\.code/);
 });

@@ -11,11 +11,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Local development uses `.data/elan.db` and `.data/media/`; both are ignored by Git. The local access codes are:
-
-- patient: `11111111`
-- family: `22222222`
-- administration: `33333333`
+Open [http://localhost:3000](http://localhost:3000). Choose the patient, family, or administration space directly. Local development uses `.data/elan.db` and `.data/media/`; both are ignored by Git.
 
 To test with cloud services, copy `.env.example` to `.env.local` and fill in the values.
 
@@ -23,7 +19,7 @@ To test with cloud services, copy `.env.example` to `.env.local` and fill in the
 
 1. Import `ahlembiz/elan` into Vercel and keep the framework preset set to **Next.js**.
 2. Leave **Output Directory** empty. Next.js generates `.next` automatically.
-3. Add the authentication variables from `.env.example`. Generate `ELAN_SESSION_SECRET` with at least 32 random characters and use a different access code of at least eight characters for each role.
+3. Add `ELAN_SESSION_SECRET` from `.env.example` with at least 32 random characters.
 4. Deploy. Without `TURSO_DATABASE_URL`, Élan automatically runs in frontend-only mode with the complete exercise catalog and non-durable sample interactions.
 5. Later, connect Turso and Private Vercel Blob when durable plans and recordings are required.
 

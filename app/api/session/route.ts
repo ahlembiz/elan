@@ -1,15 +1,12 @@
-import { clearSession, createSession, type ActorRole, verifyAccessCode } from "../../../lib/session";
+import { clearSession, createSession, type ActorRole } from "../../../lib/session";
 
 const roles = new Set<ActorRole>(["patient", "family", "admin"]);
 
 export async function POST(request: Request) {
   try {
-    const payload = await request.json() as { role?: string; code?: string };
+    const payload = await request.json() as { role?: string };
     const role = String(payload.role ?? "") as ActorRole;
-    const code = String(payload.code ?? "");
-    if (!roles.has(role) || !verifyAccessCode(role, code)) {
-      return Response.json({ error: "Code d’accès invalide" }, { status: 401 });
-    }
+    if (!roles.has(role)) return Response.json({ error: "Espace invalide" }, { status: 400 });
     const session = await createSession(role);
     return Response.json({ role: session.role, name: session.name });
   } catch (error) {

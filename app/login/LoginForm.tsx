@@ -11,7 +11,6 @@ const accounts: Array<{ role: ActorRole; label: string; detail: string; initials
 
 export default function LoginForm() {
   const [role, setRole] = useState<ActorRole>("patient");
-  const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -23,7 +22,7 @@ export default function LoginForm() {
       const response = await fetch("/api/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role, code }),
+        body: JSON.stringify({ role }),
       });
       const result = await response.json() as { error?: string };
       if (!response.ok) throw new Error(result.error || "Connexion impossible");
@@ -40,7 +39,7 @@ export default function LoginForm() {
         <div className="login-brand"><span aria-hidden="true">é</span>Élan</div>
         <p className="eyebrow">Votre réadaptation, simplement</p>
         <h1 id="login-title">Bienvenue</h1>
-        <p className="login-intro">Choisissez votre espace, puis entrez votre code d’accès.</p>
+        <p className="login-intro">Choisissez votre espace pour continuer.</p>
         <form onSubmit={signIn}>
           <fieldset>
             <legend>Mon espace</legend>
@@ -54,14 +53,9 @@ export default function LoginForm() {
               ))}
             </div>
           </fieldset>
-          <label className="login-code">
-            <span>Code d’accès</span>
-            <input type="password" inputMode="numeric" autoComplete="current-password" value={code} onChange={(event) => setCode(event.target.value)} required minLength={6} autoFocus />
-          </label>
           {error && <p className="login-error" role="alert">{error}</p>}
           <button className="login-submit" type="submit" disabled={submitting}>{submitting ? "Connexion…" : "Entrer dans Élan"}</button>
         </form>
-        {process.env.NODE_ENV !== "production" && <p className="login-development">Développement local : Salah 11111111 · Proche 22222222 · Administration 33333333</p>}
       </section>
     </main>
   );

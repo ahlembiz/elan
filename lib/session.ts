@@ -75,18 +75,6 @@ export async function getSession() {
   return decodeSession(cookieStore.get(COOKIE_NAME)?.value);
 }
 
-export function verifyAccessCode(role: ActorRole, suppliedCode: string) {
-  const environmentKey = `ELAN_${role.toUpperCase()}_CODE`;
-  const localDefaults: Record<ActorRole, string> = {
-    patient: "11111111",
-    family: "22222222",
-    admin: "33333333",
-  };
-  const expected = process.env[environmentKey] ||
-    (process.env.NODE_ENV === "production" ? "" : localDefaults[role]);
-  return Boolean(expected) && constantTimeEqual(suppliedCode, expected);
-}
-
 export async function createSession(role: ActorRole) {
   const identity = identityForRole(role);
   const session: ElanSession = {

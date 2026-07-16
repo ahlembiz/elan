@@ -1,9 +1,4 @@
-const required = [
-  "ELAN_SESSION_SECRET",
-  "ELAN_PATIENT_CODE",
-  "ELAN_FAMILY_CODE",
-  "ELAN_ADMIN_CODE",
-];
+const required = ["ELAN_SESSION_SECRET"];
 
 if (!process.env.VERCEL) {
   process.stdout.write("Local build: Vercel environment validation skipped.\n");
@@ -17,12 +12,6 @@ if (missing.length) {
 
 if (process.env.ELAN_SESSION_SECRET.length < 32) {
   throw new Error("ELAN_SESSION_SECRET must contain at least 32 characters.");
-}
-
-for (const name of ["ELAN_PATIENT_CODE", "ELAN_FAMILY_CODE", "ELAN_ADMIN_CODE"]) {
-  if (process.env[name].length < 8) {
-    throw new Error(`${name} must contain at least 8 characters.`);
-  }
 }
 
 process.stdout.write(
