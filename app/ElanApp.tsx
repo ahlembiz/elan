@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import GuidedSession from "./GuidedSession";
+import type { GuidedSessionData, GuidedSessionEntry } from "./GuidedSession";
 import MyPlan from "./MyPlan";
 
 type Language = "fr" | "en";
@@ -22,10 +24,7 @@ type ProductData = {
   observations: Array<{ id: number; authorName: string; category: string; note: string; status: string; createdAt: string }>;
   consents: Array<{ id: string; consentType: string; granted: boolean; version: string; updatedAt: string }>;
   mediaAssets: Array<{ id: string; kind: string; contentType: string; sizeBytes: number; durationMs: number | null; recordedBy: string; reviewStatus: string; createdAt: string }>;
-  dailySession?: {
-    id: string; titleFr: string; titleEn: string; targetDuration: number; effortLevel: number; status: string;
-    entries: Array<{ titleFr: string; titleEn: string; descriptionFr: string; descriptionEn: string; status: string; exerciseLibraryId: string | null }>;
-  };
+  dailySession?: GuidedSessionData;
 };
 
 const fallbackData: ProductData = {
@@ -139,6 +138,7 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
   const [dataStatus, setDataStatus] = useState<"loading" | "saved" | "offline">("loading");
   const [boardOpen, setBoardOpen] = useState(false);
   const [sessionOpen, setSessionOpen] = useState(false);
+  const [guidedSession, setGuidedSession] = useState<GuidedSessionData | null>(null);
   const [sessionStep, setSessionStep] = useState<SessionStep>("checkin");
   const [energy, setEnergy] = useState<number | null>(null);
   const [cue, setCue] = useState(0);
@@ -228,8 +228,39 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
   };
 
   const beginSession = () => {
+    if (productData.dailySession) setGuidedSession(productData.dailySession);
     setSessionStep("checkin");
     setSessionOpen(true);
+  };
+
+  const completeGuidedEntry = async (entry: GuidedSessionEntry) => {
+    const response = await fetch("/api/plan", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: entry.id, status: "completed" }),
+    });
+    if (!response.ok) throw new Error("Unable to save exercise");
+    setProductData((current) => current.dailySession ? {
+      ...current,
+      dailySession: {
+        ...current.dailySession,
+        entries: current.dailySession.entries.map((item) => item.id === entry.id ? { ...item, status: "completed" } : item),
+      },
+    } : current);
+    setDataStatus("saved");
+  };
+
+  const completeDailySession = async (session: GuidedSessionData) => {
+    const response = await fetch("/api/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "complete_session", sessionId: session.id, replaceDaily: true }),
+    });
+    if (!response.ok) throw new Error("Unable to complete session");
+    const result = await response.json() as { replacement: GuidedSessionData | null };
+    setProductData((current) => ({ ...current, dailySession: result.replacement ?? undefined }));
+    setDataStatus("saved");
+    return result.replacement;
   };
 
   const saveSession = async () => {
@@ -367,7 +398,17 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
           </div>
         </header>
 
-        {sessionOpen ? (
+        {sessionOpen && guidedSession ? (
+          <GuidedSession
+            key={guidedSession.id}
+            language={language}
+            session={guidedSession}
+            onEntryComplete={completeGuidedEntry}
+            onSessionComplete={completeDailySession}
+            onExit={() => { setSessionOpen(false); setGuidedSession(null); }}
+            onOpenReplacement={(replacement) => setGuidedSession(replacement)}
+          />
+        ) : sessionOpen ? (
           <Session
             language={language}
             step={sessionStep}
@@ -467,8 +508,8 @@ function Today({ language, onStart, onLibrary, onPlan, onBoard, onProgress, atte
         <span className="status-chip"><span className="status-dot" /> {language === "fr" ? "Votre plan est prêt" : "Your plan is ready"}</span>
         <h2 id="home-question">{language === "fr" ? "Que voulez-vous faire aujourd’hui?" : "What would you like to do today?"}</h2>
         <p>{language === "fr" ? "Commencez la séance prévue ou choisissez une activité qui correspond à votre énergie." : "Start the planned session or choose an activity that matches your energy."}</p>
-        <button className="home-primary-action" onClick={dailySession ? onLibrary : onStart}><span className="home-action-icon" aria-hidden="true">▶</span><span><b>{dailySession ? (language === "fr" ? "Voir ma séance du jour" : "View today’s session") : t.start}</b><small>{dailyDuration} {language === "fr" ? "minutes · nouvelle sélection aujourd’hui" : "minutes · a new selection today"}</small></span><span className="home-action-arrow" aria-hidden="true">→</span></button>
-        <button className="home-secondary-action" onClick={dailySession ? onStart : onLibrary}>{dailySession ? (language === "fr" ? "Faire la séance guidée" : "Use the guided session") : (language === "fr" ? "Choisir une autre séance" : "Choose another session")}<span aria-hidden="true">→</span></button>
+        <button className="home-primary-action" onClick={onStart}><span className="home-action-icon" aria-hidden="true">▶</span><span><b>{dailySession ? (language === "fr" ? "Commencer ma séance du jour" : "Start today’s session") : t.start}</b><small>{dailyDuration} {language === "fr" ? "minutes · guidée étape par étape" : "minutes · guided step by step"}</small></span><span className="home-action-arrow" aria-hidden="true">→</span></button>
+        <button className="home-secondary-action" onClick={onLibrary}>{language === "fr" ? "Choisir une autre séance" : "Choose another session"}<span aria-hidden="true">→</span></button>
       </div>
       <button className="home-board-callout" onClick={onBoard}>
         <span className="home-board-icon" aria-hidden="true">•••</span>
@@ -490,13 +531,13 @@ function Today({ language, onStart, onLibrary, onPlan, onBoard, onProgress, atte
       <article className="home-today-card card-surface">
         <div className="home-section-heading"><div><p className="eyebrow">{t.plan}</p><h3 id="home-plan-title">{dailySession ? (language === "fr" ? "Votre nouvelle séance du jour" : "Your new session for today") : (language === "fr" ? "Votre séance en 3 étapes" : "Your session in 3 steps")}</h3></div><span className="home-duration">{dailyDuration} min</span></div>
         <ol className="home-step-list">
-          {dailyEntries.length ? dailyEntries.map((entry, index) => <li key={`${entry.exerciseLibraryId}-${index}`}><span>{index + 1}</span><div><b>{language === "fr" ? entry.titleFr : entry.titleEn}</b><small>{language === "fr" ? entry.descriptionFr : entry.descriptionEn}</small></div></li>) : <>
+          {dailyEntries.length ? dailyEntries.map((entry, index) => <li key={entry.id}><span>{entry.status === "completed" ? "✓" : index + 1}</span><div><b>{language === "fr" ? entry.titleFr : entry.titleEn}</b><small>{language === "fr" ? entry.descriptionFr : entry.descriptionEn}</small></div></li>) : <>
             <li><span>1</span><div><b>{t.words}</b><small>{t.wordsSub}</small></div></li>
             <li><span>2</span><div><b>{t.movement}</b><small>{language === "fr" ? "Avec une personne près de vous" : "With someone nearby"}</small></div></li>
             <li><span>3</span><div><b>{t.mission}</b><small>{t.missionSub}</small></div></li>
           </>}
         </ol>
-        <button className="home-start-again" onClick={dailySession ? onLibrary : onStart}>{dailySession ? (language === "fr" ? "Ouvrir la séance du jour" : "Open today’s session") : t.start}<span aria-hidden="true">→</span></button>
+        <button className="home-start-again" onClick={onStart}>{dailySession ? (language === "fr" ? "Commencer la séance guidée" : "Start guided session") : t.start}<span aria-hidden="true">→</span></button>
       </article>
 
       <div className="home-side-stack">

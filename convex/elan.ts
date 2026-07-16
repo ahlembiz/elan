@@ -26,19 +26,83 @@ function stableHash(value: string) {
   return hash >>> 0;
 }
 
-function dailyExercises(patientId: string, date: string) {
+function dailyExercises(patientId: string, date: string, sequence = 1) {
   const seed = stableHash(`${patientId}:${date}`);
+  const rotation = Math.max(0, sequence - 1);
   const communication = exerciseCatalog.filter((item) => item.domain === "communication");
   const mobility = exerciseCatalog.filter((item) => item.domain === "mobility");
-  const firstCommunication = communication[seed % communication.length];
-  const selectedMobility = mobility[Math.floor(seed / 7) % mobility.length];
-  let secondCommunication = communication[Math.floor(seed / 17 + 11) % communication.length];
+  const firstCommunication = communication[(seed + rotation) % communication.length];
+  const selectedMobility = mobility[(Math.floor(seed / 7) + rotation) % mobility.length];
+  let secondCommunication = communication[(Math.floor(seed / 17 + 11) + rotation * 3) % communication.length];
   if (secondCommunication.id === firstCommunication.id) {
     secondCommunication = communication[(communication.indexOf(secondCommunication) + 1) % communication.length];
   }
   return seed % 2 === 0
     ? [firstCommunication, selectedMobility, secondCommunication]
     : [selectedMobility, firstCommunication, secondCommunication];
+}
+
+async function createDailySession(
+  ctx: MutationCtx,
+  args: {
+    patientId: string;
+    date: string;
+    actorRole: "patient" | "family" | "admin";
+    actorName: string;
+  },
+  sequence: number,
+) {
+  const exercises = dailyExercises(args.patientId, args.date, sequence);
+  const now = new Date().toISOString();
+  const sessionId = sequence === 1
+    ? `daily-${args.patientId}-${args.date}`
+    : `daily-${args.patientId}-${args.date}-${sequence}`;
+  const targetDuration = exercises.reduce((total, exercise) => total + exercise.durationMinutes, 0);
+  const effortLevel = Math.max(...exercises.map((exercise) => exercise.effortLevel));
+  const session = {
+    id: sessionId,
+    patientId: args.patientId,
+    kind: "daily" as const,
+    sessionDate: args.date,
+    titleFr: `Séance ${sequence} du jour · ${targetDuration} min`,
+    titleEn: `Today’s session ${sequence} · ${targetDuration} min`,
+    targetDuration,
+    effortLevel,
+    status: "active" as const,
+    createdByRole: args.actorRole,
+    createdByName: args.actorName,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await ctx.db.insert("planSessions", session);
+  const entries = [];
+  for (const exercise of exercises) {
+    const entry = {
+      id: `${sessionId}-${exercise.id}`,
+      patientId: args.patientId,
+      category: "exercise" as const,
+      titleFr: exercise.titleFr,
+      titleEn: exercise.titleEn,
+      descriptionFr: exercise.instructionsFr,
+      descriptionEn: exercise.instructionsEn,
+      scheduledAt: args.date,
+      status: "active" as const,
+      source: "curated" as const,
+      createdByRole: args.actorRole,
+      createdByName: args.actorName,
+      evidenceTitle: exercise.evidenceTitle,
+      evidenceUrl: exercise.evidenceUrl,
+      safetyClass: exercise.safetyClass,
+      points: 20,
+      exerciseLibraryId: exercise.id,
+      sessionId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await ctx.db.insert("planEntries", entry);
+    entries.push(entry);
+  }
+  return { session, entries };
 }
 
 async function ensureBasePlan(ctx: MutationCtx, patientId: string, date: string) {
@@ -99,56 +163,17 @@ export const ensureDailySession = mutation({
   handler: async (ctx, args) => {
     requireServerSecret(args.secret);
     await ensureBasePlan(ctx, args.patientId, args.date);
-    const existing = await ctx.db.query("planSessions")
+    const sessionsForDate = await ctx.db.query("planSessions")
       .withIndex("by_patient_date", (q) => q.eq("patientId", args.patientId).eq("sessionDate", args.date))
-      .unique();
-    if (existing) return existing.id;
+      .collect();
+    const active = sessionsForDate
+      .filter((session) => session.kind === "daily" && session.status !== "completed")
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+    if (active) return active.id;
 
-    const exercises = dailyExercises(args.patientId, args.date);
-    const now = new Date().toISOString();
-    const sessionId = `daily-${args.patientId}-${args.date}`;
-    const targetDuration = exercises.reduce((total, exercise) => total + exercise.durationMinutes, 0);
-    const effortLevel = Math.max(...exercises.map((exercise) => exercise.effortLevel));
-    await ctx.db.insert("planSessions", {
-      id: sessionId,
-      patientId: args.patientId,
-      kind: "daily",
-      sessionDate: args.date,
-      titleFr: `Séance du ${args.date} · ${targetDuration} min`,
-      titleEn: `${args.date} session · ${targetDuration} min`,
-      targetDuration,
-      effortLevel,
-      status: "active",
-      createdByRole: args.actorRole,
-      createdByName: args.actorName,
-      createdAt: now,
-      updatedAt: now,
-    });
-    for (const exercise of exercises) {
-      await ctx.db.insert("planEntries", {
-        id: `${sessionId}-${exercise.id}`,
-        patientId: args.patientId,
-        category: "exercise",
-        titleFr: exercise.titleFr,
-        titleEn: exercise.titleEn,
-        descriptionFr: exercise.instructionsFr,
-        descriptionEn: exercise.instructionsEn,
-        scheduledAt: args.date,
-        status: "active",
-        source: "curated",
-        createdByRole: args.actorRole,
-        createdByName: args.actorName,
-        evidenceTitle: exercise.evidenceTitle,
-        evidenceUrl: exercise.evidenceUrl,
-        safetyClass: exercise.safetyClass,
-        points: 20,
-        exerciseLibraryId: exercise.id,
-        sessionId,
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
-    return sessionId;
+    const dailyCount = sessionsForDate.filter((session) => session.kind === "daily").length;
+    const replacement = await createDailySession(ctx, args, dailyCount + 1);
+    return replacement.session.id;
   },
 });
 
@@ -156,16 +181,79 @@ export const removeDailySession = mutation({
   args: { secret: v.string(), patientId: v.string(), date: v.string() },
   handler: async (ctx, args) => {
     requireServerSecret(args.secret);
-    const session = await ctx.db.query("planSessions")
+    const sessions = await ctx.db.query("planSessions")
       .withIndex("by_patient_date", (q) => q.eq("patientId", args.patientId).eq("sessionDate", args.date))
+      .collect();
+    const dailySessions = sessions.filter((session) => session.kind === "daily");
+    if (!dailySessions.length) return false;
+    for (const session of dailySessions) {
+      const entries = await ctx.db.query("planEntries")
+        .withIndex("by_patient_session", (q) => q.eq("patientId", args.patientId).eq("sessionId", session.id))
+        .collect();
+      for (const entry of entries) await ctx.db.delete(entry._id);
+      await ctx.db.delete(session._id);
+    }
+    return true;
+  },
+});
+
+export const completeSession = mutation({
+  args: {
+    secret: v.string(),
+    patientId: v.string(),
+    sessionId: v.string(),
+    date: v.string(),
+    replaceDaily: v.boolean(),
+    actorRole,
+    actorName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.secret);
+    const session = await ctx.db.query("planSessions")
+      .withIndex("by_patient_external", (q) => q.eq("patientId", args.patientId).eq("id", args.sessionId))
       .unique();
-    if (!session || session.kind !== "daily") return false;
+    if (!session) throw new Error("Plan session not found");
+
+    const updatedAt = new Date().toISOString();
     const entries = await ctx.db.query("planEntries")
       .withIndex("by_patient_session", (q) => q.eq("patientId", args.patientId).eq("sessionId", session.id))
       .collect();
-    for (const entry of entries) await ctx.db.delete(entry._id);
-    await ctx.db.delete(session._id);
-    return true;
+    for (const entry of entries) {
+      if (entry.status !== "completed") await ctx.db.patch(entry._id, { status: "completed", updatedAt });
+    }
+    await ctx.db.patch(session._id, { status: "completed", updatedAt });
+
+    if (!args.replaceDaily || session.kind !== "daily") {
+      return { completedSessionId: session.id, replacement: null };
+    }
+
+    const sessionsForDate = await ctx.db.query("planSessions")
+      .withIndex("by_patient_date", (q) => q.eq("patientId", args.patientId).eq("sessionDate", args.date))
+      .collect();
+    const existingActive = sessionsForDate
+      .filter((item) => item.kind === "daily" && item.status !== "completed" && item.id !== session.id)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+    if (existingActive) {
+      const replacementEntries = await ctx.db.query("planEntries")
+        .withIndex("by_patient_session", (q) => q.eq("patientId", args.patientId).eq("sessionId", existingActive.id))
+        .collect();
+      return {
+        completedSessionId: session.id,
+        replacement: {
+          session: withoutSystemFields(existingActive),
+          entries: replacementEntries.map(withoutSystemFields),
+        },
+      };
+    }
+
+    const dailyCount = sessionsForDate.filter((item) => item.kind === "daily").length;
+    const replacement = await createDailySession(ctx, {
+      patientId: args.patientId,
+      date: args.date,
+      actorRole: args.actorRole,
+      actorName: args.actorName,
+    }, dailyCount + 1);
+    return { completedSessionId: session.id, replacement };
   },
 });
 

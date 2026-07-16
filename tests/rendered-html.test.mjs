@@ -116,13 +116,15 @@ test("Vercel can deploy without the legacy SQLite service", async () => {
   assert.doesNotMatch(sessionApi, /verifyAccessCode|payload\.code/);
 });
 
-test("Convex persists progress and creates one date-specific daily session", async () => {
-  const [schema, functions, planApi, productApi, app, envCheck] = await Promise.all([
+test("Convex persists progress and rotates completed daily sessions", async () => {
+  const [schema, functions, planApi, productApi, app, plan, guidedSession, envCheck] = await Promise.all([
     readFile(new URL("../convex/schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../convex/elan.ts", import.meta.url), "utf8"),
     readFile(new URL("api/plan/route.ts", appRoot), "utf8"),
     readFile(new URL("api/product/route.ts", appRoot), "utf8"),
     readFile(new URL("ElanApp.tsx", appRoot), "utf8"),
+    readFile(new URL("MyPlan.tsx", appRoot), "utf8"),
+    readFile(new URL("GuidedSession.tsx", appRoot), "utf8"),
     readFile(new URL("../scripts/check-vercel-env.mjs", import.meta.url), "utf8"),
   ]);
 
@@ -131,14 +133,23 @@ test("Convex persists progress and creates one date-specific daily session", asy
   }
   assert.match(functions, /export const ensureDailySession = mutation/);
   assert.match(functions, /stableHash\(`\$\{patientId\}:\$\{date\}`\)/);
+  assert.match(functions, /const rotation = Math\.max\(0, sequence - 1\)/);
   assert.match(functions, /withIndex\("by_patient_date"/);
+  assert.match(functions, /export const completeSession = mutation/);
+  assert.match(functions, /dailyCount \+ 1/);
   assert.match(functions, /export const recordAttempt = mutation/);
   assert.match(functions, /export const updatePlanEntry = mutation/);
   assert.match(planApi, /convexMutation<string>\("elan:ensureDailySession"/);
+  assert.match(planApi, /"elan:completeSession"/);
   assert.match(productApi, /convexMutation<unknown>\("elan:recordAttempt"/);
   assert.match(productApi, /dailySession/);
-  assert.match(app, /Voir ma séance du jour/);
+  assert.match(app, /Commencer ma séance du jour/);
   assert.match(app, /dailyEntries\.map/);
+  assert.match(app, /onSessionComplete=\{completeDailySession\}/);
+  assert.match(plan, /setActiveGuidedSession\(toGuidedSession/);
+  assert.match(guidedSession, /Vous verrez une activité à la fois/);
+  assert.match(guidedSession, /onEntryComplete\(entry\)/);
+  assert.match(guidedSession, /Une nouvelle séance différente est déjà prête/);
   assert.match(envCheck, /"NEXT_PUBLIC_CONVEX_URL"/);
   assert.match(envCheck, /"ELAN_CONVEX_API_SECRET"/);
 });

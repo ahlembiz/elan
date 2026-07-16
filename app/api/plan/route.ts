@@ -116,6 +116,19 @@ function toSession(row: SessionRow) {
   };
 }
 
+function enrichExerciseEntry<T extends { exerciseLibraryId?: string | null }>(entry: T) {
+  const exercise = entry.exerciseLibraryId
+    ? exerciseCatalog.find((item) => item.id === entry.exerciseLibraryId)
+    : undefined;
+  return {
+    ...entry,
+    assistanceFr: exercise?.assistanceFr ?? "",
+    assistanceEn: exercise?.assistanceEn ?? "",
+    durationMinutes: exercise?.durationMinutes,
+    effortLevel: exercise?.effortLevel,
+  };
+}
+
 let frontendPlanRows: PlanRow[] | null = null;
 const frontendSessionRows: SessionRow[] = [];
 
@@ -214,6 +227,37 @@ export async function POST(request: Request) {
     const createdByName = auth.session.name;
 
     if (hasConvex()) {
+      if (payload.kind === "complete_session") {
+        if (!["patient", "family"].includes(auth.session.role)) {
+          return Response.json({ error: "This account cannot complete a patient session" }, { status: 403 });
+        }
+        const sessionId = String(payload.sessionId ?? "");
+        if (!sessionId) return Response.json({ error: "A session is required" }, { status: 400 });
+        type CompletionResult = {
+          completedSessionId: string;
+          replacement: null | {
+            session: Record<string, unknown>;
+            entries: Array<Record<string, unknown> & { exerciseLibraryId?: string | null }>;
+          };
+        };
+        const result = await convexMutation<CompletionResult>("elan:completeSession", {
+          patientId: PATIENT_ID,
+          sessionId,
+          date: torontoDate(),
+          replaceDaily: Boolean(payload.replaceDaily),
+          actorRole: createdByRole,
+          actorName: createdByName,
+        });
+        return Response.json({
+          completedSessionId: result.completedSessionId,
+          replacement: result.replacement
+            ? {
+                ...result.replacement.session,
+                entries: result.replacement.entries.map(enrichExerciseEntry),
+              }
+            : null,
+        });
+      }
       if (payload.kind === "session") {
         const templateIds = [...new Set(Array.isArray(payload.templateIds) ? payload.templateIds.map(String) : [])].slice(0, 8);
         if (!templateIds.length) return Response.json({ error: "Choose at least one exercise" }, { status: 400 });
@@ -225,7 +269,10 @@ export async function POST(request: Request) {
           actorRole: createdByRole,
           actorName: createdByName,
         });
-        return Response.json(result, { status: 201 });
+        return Response.json({
+          session: result.session,
+          entries: result.entries.map((entry) => enrichExerciseEntry(entry as { exerciseLibraryId?: string | null })),
+        }, { status: 201 });
       }
       const category = String(payload.category ?? "todo");
       const title = String(payload.title ?? "").trim().slice(0, 120);
@@ -248,6 +295,23 @@ export async function POST(request: Request) {
 
     if (usesFrontendData()) {
       const now = new Date().toISOString();
+      if (payload.kind === "complete_session") {
+        if (!["patient", "family"].includes(auth.session.role)) {
+          return Response.json({ error: "This account cannot complete a patient session" }, { status: 403 });
+        }
+        const sessionId = String(payload.sessionId ?? "");
+        const session = frontendSessionRows.find((item) => item.id === sessionId);
+        if (!session) return Response.json({ error: "Plan session not found" }, { status: 404 });
+        session.status = "completed";
+        session.updated_at = now;
+        getFrontendPlanRows().forEach((entry) => {
+          if (entry.session_id === sessionId) {
+            entry.status = "completed";
+            entry.updated_at = now;
+          }
+        });
+        return Response.json({ completedSessionId: sessionId, replacement: null });
+      }
       if (payload.kind === "session") {
         const templateIds = [...new Set(Array.isArray(payload.templateIds) ? payload.templateIds.map(String) : [])].slice(0, 8);
         const templates = templateIds.map((id) => exerciseCatalog.find((item) => item.id === id)).filter((item): item is (typeof exerciseCatalog)[number] => Boolean(item));
@@ -274,7 +338,7 @@ export async function POST(request: Request) {
         }));
         frontendSessionRows.unshift(sessionRow);
         getFrontendPlanRows().unshift(...rows);
-        return Response.json({ session: toSession(sessionRow), entries: rows.map(toPlanEntry) }, { status: 201 });
+        return Response.json({ session: toSession(sessionRow), entries: rows.map(toPlanEntry).map(enrichExerciseEntry) }, { status: 201 });
       }
 
       const templateId = String(payload.templateId ?? "").trim();
@@ -299,6 +363,19 @@ export async function POST(request: Request) {
     }
 
     await ensurePlanWorkspace();
+    if (payload.kind === "complete_session") {
+      if (!["patient", "family"].includes(auth.session.role)) {
+        return Response.json({ error: "This account cannot complete a patient session" }, { status: 403 });
+      }
+      const sessionId = String(payload.sessionId ?? "");
+      const session = await sqlite.prepare("SELECT id FROM plan_sessions WHERE id = ? AND patient_id = ?").bind(sessionId, PATIENT_ID).first<{ id: string }>();
+      if (!session) return Response.json({ error: "Plan session not found" }, { status: 404 });
+      await sqlite.batch([
+        sqlite.prepare("UPDATE plan_entries SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE session_id = ? AND patient_id = ?").bind(sessionId, PATIENT_ID),
+        sqlite.prepare("UPDATE plan_sessions SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND patient_id = ?").bind(sessionId, PATIENT_ID),
+      ]);
+      return Response.json({ completedSessionId: sessionId, replacement: null });
+    }
     if (payload.kind === "session") {
       const templateIds = [...new Set(Array.isArray(payload.templateIds) ? payload.templateIds.map(String) : [])].slice(0, 8);
       const targetDuration = Math.max(5, Math.min(60, Number(payload.targetDuration) || 15));
@@ -319,7 +396,10 @@ export async function POST(request: Request) {
       await sqlite.prepare("INSERT INTO audit_events (patient_id, actor_email, action, resource_type, resource_id, detail) VALUES (?, ?, 'plan_session.created', 'plan_session', ?, ?)")
         .bind(PATIENT_ID, auth.session.email, sessionId, `${templates.results.length} exercises`).run();
       const result = await readPlan();
-      return Response.json({ session: result.sessions.find((item) => item.id === sessionId), entries: result.entries.filter((item) => item.sessionId === sessionId) }, { status: 201 });
+      return Response.json({
+        session: result.sessions.find((item) => item.id === sessionId),
+        entries: result.entries.filter((item) => item.sessionId === sessionId).map(enrichExerciseEntry),
+      }, { status: 201 });
     }
 
     const templateId = String(payload.templateId ?? "").trim();

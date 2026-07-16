@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import GuidedSession from "./GuidedSession";
+import type { GuidedSessionData, GuidedSessionEntry } from "./GuidedSession";
 
 type Language = "fr" | "en";
 type ActorRole = "patient" | "family" | "admin";
@@ -15,6 +17,7 @@ type PlanEntry = {
   createdByRole: ActorRole; createdByName: string; evidenceTitle: string | null; evidenceUrl: string | null;
   safetyClass: "standard" | "supervised" | "clinical_review"; points: number;
   exerciseLibraryId: string | null; sessionId: string | null; createdAt: string;
+  assistanceFr?: string; assistanceEn?: string; durationMinutes?: number; effortLevel?: number;
 };
 
 type ExerciseTemplate = {
@@ -29,6 +32,7 @@ type ExerciseTemplate = {
 type PlanSession = {
   id: string; titleFr: string; titleEn: string; targetDuration: number; effortLevel: number;
   status: PlanStatus; createdByRole: ActorRole; createdByName: string; createdAt: string;
+  kind?: "daily" | "custom"; sessionDate?: string;
 };
 
 const tabs: Array<{ id: PlanTab; category?: PlanCategory; mark: string }> = [
@@ -66,6 +70,31 @@ function EffortDots({ value, label }: { value: number; label: string }) {
   return <span className="effort-dots" aria-label={`${label}: ${value}/5`}><small>{label}</small>{[1, 2, 3, 4, 5].map((dot) => <i key={dot} className={dot <= value ? "filled" : ""} />)}</span>;
 }
 
+function toGuidedSession(session: PlanSession, entries: PlanEntry[], library: ExerciseTemplate[]): GuidedSessionData {
+  return {
+    ...session,
+    entries: entries.filter((entry) => entry.sessionId === session.id).map((entry) => {
+      const template = entry.exerciseLibraryId ? library.find((item) => item.id === entry.exerciseLibraryId) : undefined;
+      return {
+        id: entry.id,
+        titleFr: entry.titleFr,
+        titleEn: entry.titleEn,
+        descriptionFr: entry.descriptionFr,
+        descriptionEn: entry.descriptionEn,
+        assistanceFr: entry.assistanceFr ?? template?.assistanceFr,
+        assistanceEn: entry.assistanceEn ?? template?.assistanceEn,
+        evidenceTitle: entry.evidenceTitle,
+        evidenceUrl: entry.evidenceUrl,
+        safetyClass: entry.safetyClass,
+        durationMinutes: entry.durationMinutes ?? template?.durationMinutes,
+        effortLevel: entry.effortLevel ?? template?.effortLevel,
+        status: entry.status,
+        exerciseLibraryId: entry.exerciseLibraryId,
+      };
+    }),
+  };
+}
+
 export default function MyPlan({ language, initialTab = "overview", actorRole, attemptCount = 0 }: { language: Language; initialTab?: string; actorRole: ActorRole; attemptCount?: number }) {
   const normalizedTab = tabs.some((item) => item.id === initialTab) ? initialTab as PlanTab : "overview";
   const [selectedTab, setSelectedTab] = useState<PlanTab>(normalizedTab);
@@ -86,6 +115,7 @@ export default function MyPlan({ language, initialTab = "overview", actorRole, a
   const [libraryDuration, setLibraryDuration] = useState(20);
   const [librarySearch, setLibrarySearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(12);
+  const [activeGuidedSession, setActiveGuidedSession] = useState<GuidedSessionData | null>(null);
 
   useEffect(() => {
     fetch("/api/plan")
@@ -155,8 +185,49 @@ export default function MyPlan({ language, initialTab = "overview", actorRole, a
       if (!response.ok) throw new Error();
       const result = await response.json() as { session: PlanSession; entries: PlanEntry[] };
       setSessions((current) => [result.session, ...current]); setEntries((current) => [...result.entries, ...current]); setStatus("saved");
-      requestAnimationFrame(() => document.getElementById("active-sessions")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      if (actorRole !== "admin") setActiveGuidedSession(toGuidedSession(result.session, result.entries, library));
     } catch { setStatus("offline"); } finally { setSavingId(null); }
+  };
+
+  const completeGuidedEntry = async (entry: GuidedSessionEntry) => {
+    const response = await fetch("/api/plan", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: entry.id, status: "completed" }),
+    });
+    if (!response.ok) throw new Error("Unable to save exercise");
+    const { entry: updated } = await response.json() as { entry: PlanEntry };
+    setEntries((current) => current.map((item) => item.id === updated.id ? updated : item));
+    setStatus("saved");
+  };
+
+  const completeGuidedSession = async (session: GuidedSessionData) => {
+    const response = await fetch("/api/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "complete_session", sessionId: session.id, replaceDaily: session.kind === "daily" }),
+    });
+    if (!response.ok) throw new Error("Unable to complete session");
+    const result = await response.json() as { replacement: GuidedSessionData | null };
+    setSessions((current) => current.map((item) => item.id === session.id ? { ...item, status: "completed" } : item));
+    setEntries((current) => current.map((item) => item.sessionId === session.id ? { ...item, status: "completed" } : item));
+    const refreshed = await fetch("/api/plan");
+    if (refreshed.ok) {
+      const data = await refreshed.json() as { entries: PlanEntry[]; library: ExerciseTemplate[]; sessions: PlanSession[] };
+      setEntries(data.entries);
+      setLibrary(data.library);
+      setSessions(data.sessions);
+    }
+    setStatus("saved");
+    return result.replacement;
+  };
+
+  const openSession = (session: PlanSession) => {
+    if (actorRole === "admin") {
+      setSelectedTab("exercises");
+      return;
+    }
+    setActiveGuidedSession(toGuidedSession(session, entries, library));
   };
 
   const toggleEntry = async (entry: PlanEntry) => {
@@ -177,6 +248,16 @@ export default function MyPlan({ language, initialTab = "overview", actorRole, a
 
   const actorEyebrow = actorRole === "admin" ? ["Administration du plan", "Plan administration"] : actorRole === "family" ? ["Plan partagé avec Salah", "Plan shared with Salah"] : ["Votre espace de récupération", "Your recovery space"];
 
+  if (activeGuidedSession) return <GuidedSession
+    key={activeGuidedSession.id}
+    language={language}
+    session={activeGuidedSession}
+    onEntryComplete={completeGuidedEntry}
+    onSessionComplete={completeGuidedSession}
+    onExit={() => setActiveGuidedSession(null)}
+    onOpenReplacement={(replacement) => setActiveGuidedSession(replacement)}
+  />;
+
   return <section className="plan-workspace">
     <div className="plan-title-row">
       <div><p className="eyebrow">{actorEyebrow[language === "fr" ? 0 : 1]}</p><h2>{language === "fr" ? "Mon plan" : "My plan"}</h2><p>{language === "fr" ? "Un seul endroit pour choisir une séance, voir ce qui vient et reconnaître chaque progrès." : "One place to choose a session, see what is next, and recognize every step forward."}</p></div>
@@ -192,7 +273,7 @@ export default function MyPlan({ language, initialTab = "overview", actorRole, a
         <article className="momentum-card"><div className="momentum-copy"><p className="eyebrow">{language === "fr" ? "Évolution personnelle" : "Personal evolution"}</p><h3>{language === "fr" ? "Votre élan prend forme" : "Your momentum is taking shape"}</h3><p>{language === "fr" ? "Les pauses ne retirent jamais de progrès. Chaque action terminée ajoute un repère à votre propre parcours." : "Rest never removes progress. Each completed action adds a marker to your own journey."}</p></div><div className="momentum-orbit" aria-label={`${momentum} points`}><strong>{momentum}</strong><span>{language === "fr" ? "points d’élan" : "momentum points"}</span></div><div className="level-track"><span style={{ width: `${levelProgress}%` }} /></div><div className="level-copy"><b>{language === "fr" ? `Niveau ${level} · capacité en construction` : `Level ${level} · capacity in progress`}</b><small>{100 - levelProgress} {language === "fr" ? "points avant le prochain repère" : "points to the next marker"}</small></div></article>
         <article className="evolution-card card-surface"><p className="eyebrow">{language === "fr" ? "4 dernières semaines" : "Last 4 weeks"}</p><h3>{language === "fr" ? "Moins d’aide, plus de choix" : "Less help, more choice"}</h3><div className="evolution-bars" aria-label={language === "fr" ? "Tendance de progression" : "Progress trend"}>{[34, 46, 59, Math.min(86, 66 + completed.length * 4)].map((value, index) => <div key={index}><span style={{ height: `${value}%` }} className={index === 3 ? "current" : ""}><b>{value}%</b></span><small>S{index + 1}</small></div>)}</div><p>{language === "fr" ? "Tendance descriptive — à interpréter avec l’équipe, jamais comme un score clinique." : "Descriptive trend—interpret with the care team, never as a clinical score."}</p></article>
       </div>
-      {sessions.length > 0 && <SessionList sessions={sessions.slice(0, 2)} entries={entries} language={language} onOpen={() => setSelectedTab("exercises")} />}
+      {sessions.length > 0 && <SessionList sessions={sessions.slice(0, 2)} entries={entries} language={language} onOpen={openSession} />}
       <div className="plan-domain-grid">{(["appointment", "todo", "diet", "exercise"] as PlanCategory[]).map((category, index) => { const total = entries.filter((entry) => entry.category === category).length; const done = entries.filter((entry) => entry.category === category && entry.status === "completed").length; return <button key={category} onClick={() => setSelectedTab(tabs[index + 1].id)}><span>{["R", "✓", "D", "E"][index]}</span><b>{categoryLabel(category, language)}</b><small>{done}/{total} {language === "fr" ? "complétés" : "completed"}</small><i><em style={{ width: `${total ? Math.round(done / total * 100) : 0}%` }} /></i></button>; })}</div>
     </>}
 
@@ -200,7 +281,7 @@ export default function MyPlan({ language, initialTab = "overview", actorRole, a
 
     {selectedTab === "exercises" ? <>
       <SessionBuilder language={language} libraryCount={library.length} domain={sessionDomain} setDomain={setSessionDomain} duration={sessionDuration} setDuration={setSessionDuration} effort={sessionEffort} setEffort={setSessionEffort} complexity={sessionComplexity} setComplexity={setSessionComplexity} recommended={recommended} saving={savingId === "session"} onCreate={createSession} />
-      <div id="active-sessions"><SessionList sessions={sessions} entries={entries} language={language} onOpen={() => document.getElementById("planned-exercises")?.scrollIntoView({ behavior: "smooth" })} /></div>
+      <div id="active-sessions"><SessionList sessions={sessions} entries={entries} language={language} onOpen={openSession} /></div>
       <section id="planned-exercises" className="planned-exercises"><div className="plan-section-heading"><div><p className="eyebrow">{language === "fr" ? "Prêtes à compléter" : "Ready to complete"}</p><h3>{language === "fr" ? "Exercices dans mon plan" : "Exercises in my plan"}</h3></div><button className="plan-add-inline" onClick={() => openEditor("exercise")}>+ {language === "fr" ? "Entrée manuelle" : "Manual entry"}</button></div><div className="plan-entry-list">{visibleEntries.length ? visibleEntries.map((entry) => <PlanEntryCard key={entry.id} entry={entry} language={language} saving={savingId === entry.id} onToggle={() => toggleEntry(entry)} />) : <EmptyPlan language={language} onAdd={() => openEditor("exercise")} />}</div></section>
       <section className="curated-library">
         <div className="curated-heading"><div><p className="eyebrow">{language === "fr" ? "Bibliothèque complète" : "Complete library"}</p><h3>{language === "fr" ? "Choisir par temps, effort et complexité" : "Choose by time, effort, and complexity"}</h3><p>{language === "fr" ? "Le temps inclut les pauses. L’effort est votre préférence pour la séance; il ne modifie jamais la dose, l’aide ou les répétitions prescrites." : "Time includes rests. Effort is your session preference; it never changes prescribed dose, assistance, or repetitions."}</p></div><span>{library.length} {language === "fr" ? "exercices" : "exercises"}</span></div>
@@ -233,9 +314,9 @@ function SessionBuilder({ language, libraryCount, domain, setDomain, duration, s
   </section>;
 }
 
-function SessionList({ sessions, entries, language, onOpen }: { sessions: PlanSession[]; entries: PlanEntry[]; language: Language; onOpen: () => void }) {
+function SessionList({ sessions, entries, language, onOpen }: { sessions: PlanSession[]; entries: PlanEntry[]; language: Language; onOpen: (session: PlanSession) => void }) {
   if (!sessions.length) return null;
-  return <section className="active-session-list"><div className="plan-section-heading"><div><p className="eyebrow">{language === "fr" ? "Parcours en cours" : "Active pathway"}</p><h3>{language === "fr" ? "Mes séances" : "My sessions"}</h3></div></div><div className="session-list-grid">{sessions.map((session) => { const items = entries.filter((entry) => entry.sessionId === session.id); const done = items.filter((entry) => entry.status === "completed").length; const progress = items.length ? Math.round(done / items.length * 100) : 0; return <article className={`session-summary-card card-surface ${session.status}`} key={session.id}><div className="session-summary-top"><span>{session.status === "completed" ? "✓" : `${done}/${items.length}`}</span><div><p className="eyebrow">{session.status === "completed" ? (language === "fr" ? "Séance accomplie" : "Session complete") : (language === "fr" ? "Séance active" : "Active session")}</p><h4>{language === "fr" ? session.titleFr : session.titleEn}</h4></div></div><div className="session-progress"><i style={{ width: `${progress}%` }} /></div><p>{progress}% · {session.targetDuration} min · {language === "fr" ? "effort" : "effort"} {session.effortLevel}/5</p><button onClick={onOpen}>{session.status === "completed" ? (language === "fr" ? "Revoir les activités" : "Review activities") : (language === "fr" ? "Continuer la séance →" : "Continue session →")}</button></article>; })}</div></section>;
+  return <section className="active-session-list"><div className="plan-section-heading"><div><p className="eyebrow">{language === "fr" ? "Parcours en cours" : "Active pathway"}</p><h3>{language === "fr" ? "Mes séances" : "My sessions"}</h3></div></div><div className="session-list-grid">{sessions.map((session) => { const items = entries.filter((entry) => entry.sessionId === session.id); const done = items.filter((entry) => entry.status === "completed").length; const progress = items.length ? Math.round(done / items.length * 100) : 0; return <article className={`session-summary-card card-surface ${session.status}`} key={session.id}><div className="session-summary-top"><span>{session.status === "completed" ? "✓" : `${done}/${items.length}`}</span><div><p className="eyebrow">{session.status === "completed" ? (language === "fr" ? "Séance accomplie" : "Session complete") : (language === "fr" ? "Séance active" : "Active session")}</p><h4>{language === "fr" ? session.titleFr : session.titleEn}</h4></div></div><div className="session-progress"><i style={{ width: `${progress}%` }} /></div><p>{progress}% · {session.targetDuration} min · {language === "fr" ? "effort" : "effort"} {session.effortLevel}/5</p><button onClick={() => onOpen(session)}>{session.status === "completed" ? (language === "fr" ? "Voir le résumé" : "View summary") : (language === "fr" ? "Continuer la séance →" : "Continue session →")}</button></article>; })}</div></section>;
 }
 
 function LibraryFilters({ language, domain, setDomain, effort, setEffort, complexity, setComplexity, duration, setDuration, search, setSearch, resultCount }: { language: Language; domain: "all" | "communication" | "mobility"; setDomain: (value: "all" | "communication" | "mobility") => void; effort: number; setEffort: (value: number) => void; complexity: number; setComplexity: (value: number) => void; duration: number; setDuration: (value: number) => void; search: string; setSearch: (value: string) => void; resultCount: number }) {

@@ -3,6 +3,7 @@ import { getDb, sqlite } from "../../../db";
 import { convexMutation, convexQuery, hasConvex, torontoDate } from "../../../lib/convex";
 import { requireApiSession } from "../../../lib/session";
 import { assignments, attempts, consents, exercises, goals, mediaAssets, observations, patientProfiles } from "../../../db/schema";
+import { exerciseCatalog } from "../plan/exerciseCatalog";
 
 const PATIENT_ID = "patient-salah";
 
@@ -90,14 +91,33 @@ export async function GET(request: Request) {
         actorRole: auth.session.role,
         actorName: auth.session.name,
       });
-      type StoredEntry = { sessionId: string | null; titleFr: string; titleEn: string; descriptionFr: string; descriptionEn: string; status: string; exerciseLibraryId: string | null };
+      type StoredEntry = {
+        id: string; sessionId: string | null; titleFr: string; titleEn: string;
+        descriptionFr: string; descriptionEn: string; status: "active" | "completed" | "paused";
+        exerciseLibraryId: string | null; evidenceTitle: string | null; evidenceUrl: string | null;
+        safetyClass: "standard" | "supervised" | "clinical_review";
+      };
       type StoredSession = { id: string; sessionDate?: string; titleFr: string; titleEn: string; targetDuration: number; effortLevel: number; status: string };
       const [activity, plan] = await Promise.all([
         convexQuery<{ attempts: unknown[]; observations: unknown[]; consents: unknown[] }>("elan:getActivity", { patientId: PATIENT_ID }),
         convexQuery<{ entries: StoredEntry[]; sessions: StoredSession[] }>("elan:getPlan", { patientId: PATIENT_ID }),
       ]);
-      const session = plan.sessions.find((item) => item.sessionDate === date);
-      const dailySession = session ? { ...session, entries: plan.entries.filter((entry) => entry.sessionId === session.id) } : undefined;
+      const session = plan.sessions.find((item) => item.sessionDate === date && item.status !== "completed");
+      const dailySession = session ? {
+        ...session,
+        entries: plan.entries.filter((entry) => entry.sessionId === session.id).map((entry) => {
+          const exercise = entry.exerciseLibraryId
+            ? exerciseCatalog.find((item) => item.id === entry.exerciseLibraryId)
+            : undefined;
+          return {
+            ...entry,
+            assistanceFr: exercise?.assistanceFr ?? "",
+            assistanceEn: exercise?.assistanceEn ?? "",
+            durationMinutes: exercise?.durationMinutes,
+            effortLevel: exercise?.effortLevel,
+          };
+        }),
+      } : undefined;
       return Response.json({ ...frontendProductData, ...activity, dailySession });
     }
     if (usesFrontendData()) return Response.json(frontendProductData);
