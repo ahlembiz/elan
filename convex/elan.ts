@@ -29,8 +29,9 @@ function stableHash(value: string) {
 function dailyExercises(patientId: string, date: string, sequence = 1) {
   const seed = stableHash(`${patientId}:${date}`);
   const rotation = Math.max(0, sequence - 1);
-  const communication = exerciseCatalog.filter((item) => item.domain === "communication");
-  const mobility = exerciseCatalog.filter((item) => item.domain === "mobility");
+  // Daily sessions are done solo and must always stay at 30 minutes or less (3 × ≤10 min).
+  const communication = exerciseCatalog.filter((item) => item.domain === "communication" && !item.requiresPartner && item.durationMinutes <= 10);
+  const mobility = exerciseCatalog.filter((item) => item.domain === "mobility" && !item.requiresPartner && item.durationMinutes <= 10);
   const firstCommunication = communication[(seed + rotation) % communication.length];
   const selectedMobility = mobility[(Math.floor(seed / 7) + rotation) % mobility.length];
   let secondCommunication = communication[(Math.floor(seed / 17 + 11) + rotation * 3) % communication.length];

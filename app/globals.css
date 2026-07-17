@@ -1013,3 +1013,25 @@ html[data-theme="night"] .guided-phrase button { color: var(--teal-deep); }
 /* Studio reorganization */
 .studio-topline { display: flex; justify-content: flex-end; margin-bottom: 16px; }
 .planned-more-hint { margin: 12px 4px 0; color: var(--muted); font-size: .88rem; font-weight: 700; }
+
+/* ---------- Mobile-first hardening (phones + iPad) ---------- */
+html { -webkit-text-size-adjust: 100%; }
+body { min-height: 100dvh; }
+.app-shell { min-height: 100dvh; }
+* { -webkit-tap-highlight-color: transparent; }
+.board-screen, .show-screen { padding-bottom: env(safe-area-inset-bottom); }
+.spoken-bar { bottom: calc(18px + env(safe-area-inset-bottom)); }
+.studio-options { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+@media (max-width: 860px) {
+  /* 16px inputs stop iOS Safari from zooming the page on focus */
+  input, select, textarea { font-size: max(16px, 1rem); }
+  .side-nav { height: auto; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .app-shell { padding-bottom: calc(116px + env(safe-area-inset-bottom)); }
+  .main-content { padding-bottom: calc(134px + env(safe-area-inset-bottom)); }
+  .quick-board { bottom: calc(120px + env(safe-area-inset-bottom)); }
+  .toast { bottom: calc(124px + env(safe-area-inset-bottom)); }
+  .board-inner { padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
+  .studio-options, .studio-options.three { grid-template-columns: 1fr; }
+  .modal-backdrop { padding: 14px; align-items: end; }
+  .settings-sheet, .plan-editor, .consent-modal { max-height: 88dvh; border-radius: var(--r-lg) var(--r-lg) 0 0; margin-bottom: calc(-14px); padding-bottom: calc(26px + env(safe-area-inset-bottom)); }
+}

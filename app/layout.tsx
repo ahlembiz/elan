@@ -1,7 +1,17 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Atkinson_Hyperlegible, Fraunces } from "next/font/google";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f7f2e7" },
+    { media: "(prefers-color-scheme: dark)", color: "#0e1714" },
+  ],
+};
 
 const display = Fraunces({
   subsets: ["latin"],
@@ -34,6 +44,7 @@ export async function generateMetadata(): Promise<Metadata> {
       images: [{ url: "/og.png", width: 1536, height: 1024, alt: "Élan — Votre réadaptation, simplement" }],
     },
     twitter: { card: "summary_large_image", title, description, images: ["/og.png"] },
+    appleWebApp: { capable: true, statusBarStyle: "default", title: "Élan" },
   };
 }
 

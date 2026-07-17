@@ -178,8 +178,9 @@ export default function MyPlan({ language, initialTab = "overview", actorRole, a
       : library, [library, actorRole]);
 
   const recommended = useMemo(() => {
+    const durationCap = Math.min(sessionDuration, 30);
     const candidates = roleLibrary
-      .filter((item) => (sessionDomain === "all" || item.domain === sessionDomain) && item.effortLevel <= sessionEffort && item.difficulty <= sessionComplexity && item.durationMinutes <= sessionDuration)
+      .filter((item) => (sessionDomain === "all" || item.domain === sessionDomain) && item.effortLevel <= sessionEffort && item.difficulty <= sessionComplexity && item.durationMinutes <= durationCap)
       .sort((a, b) => Math.abs(a.effortLevel - sessionEffort) - Math.abs(b.effortLevel - sessionEffort) || a.durationMinutes - b.durationMinutes);
     const ordered = sessionDomain === "all"
       ? Array.from({ length: Math.max(candidates.filter((item) => item.domain === "communication").length, candidates.filter((item) => item.domain === "mobility").length) }, (_, index) => [candidates.filter((item) => item.domain === "communication")[index], candidates.filter((item) => item.domain === "mobility")[index]]).flat().filter((item): item is ExerciseTemplate => Boolean(item))
@@ -193,7 +194,7 @@ export default function MyPlan({ language, initialTab = "overview", actorRole, a
     for (const item of rotated) {
       if (picked.length >= 5) break;
       if (seenTopics.has(topicOf(item))) continue;
-      if (total + item.durationMinutes <= sessionDuration || picked.length === 0) {
+      if (total + item.durationMinutes <= durationCap || picked.length === 0) {
         picked.push(item); total += item.durationMinutes; seenTopics.add(topicOf(item));
       }
     }
@@ -333,7 +334,8 @@ export default function MyPlan({ language, initialTab = "overview", actorRole, a
     { value: 5, icon: "☕", fr: "Une pause", en: "A short break" },
     { value: 10, icon: "🕐", fr: "Un bon moment", en: "A good moment" },
     { value: 15, icon: "🎯", fr: "Une vraie séance", en: "A full session" },
-    { value: 20, icon: "🌟", fr: "En pleine forme", en: "Feeling great" },
+    { value: 20, icon: "💪", fr: "En pleine forme", en: "Feeling great" },
+    { value: 30, icon: "🌟", fr: "Une grande séance", en: "A big session" },
   ];
   const studioEnergies = [
     { effort: 2, complexity: 2, icon: "🌱", fr: "En douceur", en: "Gently", subFr: "Activités calmes et familières", subEn: "Calm, familiar activities" },
