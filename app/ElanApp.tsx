@@ -54,7 +54,7 @@ const copy = {
     mission: "Mission dans la cuisine",
     missionSub: "Demander un verre d’eau",
     rhythm: "Votre rythme cette semaine",
-    rhythmSub: "3 journées de pratique",
+    rhythmSub: "Votre première séance vous attend",
     noStreak: "Chaque effort compte. Une journée de repos ne change pas vos progrès.",
     next: "Prochain rendez-vous",
     clinician: "Marie-Claude · Orthophoniste",
@@ -76,7 +76,7 @@ const copy = {
     mission: "Kitchen mission",
     missionSub: "Ask for a glass of water",
     rhythm: "Your rhythm this week",
-    rhythmSub: "3 practice days",
+    rhythmSub: "Your first session awaits",
     noStreak: "Every effort counts. A rest day does not change your progress.",
     next: "Next appointment",
     clinician: "Marie-Claude · Speech therapist",
@@ -192,6 +192,7 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
   const [toast, setToast] = useState<{ text: string; tone: "success" | "error" } | null>(null);
   const [daypart, setDaypart] = useState<"morning" | "afternoon" | "evening" | null>(null);
   const [dateLine, setDateLine] = useState("");
+  const [todayIndex, setTodayIndex] = useState<number | null>(null);
   const [localVariant, setLocalVariant] = useState(0);
   const variantRef = useRef(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -226,6 +227,7 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
       setDaypart(hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening");
       setUsage(readUsage());
       setLocalVariant(storedVariant);
+      setTodayIndex((new Date().getDay() + 6) % 7);
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
@@ -569,7 +571,7 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
         ) : role === "admin" ? (
           <MyPlan key={portalTab} language={language} initialTab={portalTab} actorRole="admin" attemptCount={productData.attempts.length} />
         ) : view === "today" ? (
-          <Home language={language} onStart={beginSession} onShuffle={advanceVariant} onLibrary={() => setView("practice")} onPlan={() => setView("plan")} onBoard={() => setBoardOpen(true)} onProgress={() => setView("progress")} attemptCount={productData.attempts.length} dailySession={upcomingSession} isPlanned={Boolean(productData.dailySession)} />
+          <Home language={language} onStart={beginSession} onShuffle={advanceVariant} onLibrary={() => setView("practice")} onPlan={() => setView("plan")} onBoard={() => setBoardOpen(true)} onProgress={() => setView("progress")} attemptCount={productData.attempts.length} dailySession={upcomingSession} isPlanned={Boolean(productData.dailySession)} todayIndex={todayIndex} />
         ) : view === "progress" ? (
           <Progress language={language} onHome={() => setView("today")} />
         ) : view === "practice" ? (
@@ -703,7 +705,7 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
   );
 }
 
-function Home({ language, onStart, onShuffle, onLibrary, onPlan, onBoard, onProgress, attemptCount, dailySession, isPlanned }: { language: Language; onStart: () => void; onShuffle: () => void; onLibrary: () => void; onPlan: () => void; onBoard: () => void; onProgress: () => void; attemptCount: number; dailySession?: ProductData["dailySession"]; isPlanned: boolean }) {
+function Home({ language, onStart, onShuffle, onLibrary, onPlan, onBoard, onProgress, attemptCount, dailySession, isPlanned, todayIndex }: { language: Language; onStart: () => void; onShuffle: () => void; onLibrary: () => void; onPlan: () => void; onBoard: () => void; onProgress: () => void; attemptCount: number; dailySession?: ProductData["dailySession"]; isPlanned: boolean; todayIndex: number | null }) {
   const t = copy[language];
   const dailyEntries = dailySession?.entries.slice(0, 3) ?? [];
   const dailyDone = dailySession?.entries.filter((entry) => entry.status === "completed").length ?? 0;
@@ -754,7 +756,7 @@ function Home({ language, onStart, onShuffle, onLibrary, onPlan, onBoard, onProg
         <h3 id="home-rhythm-title">{attemptCount ? (language === "fr" ? `${attemptCount} séances enregistrées` : `${attemptCount} sessions recorded`) : t.rhythmSub}</h3>
         <p>{t.noStreak}</p>
       </div>
-      <div className="home-week" aria-label={language === "fr" ? "Trois journées de pratique cette semaine" : "Three practice days this week"}><span className="done">L</span><span className="done">M</span><span className="today-dot">M</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
+      <div className="home-week" aria-label={language === "fr" ? "Votre semaine" : "Your week"}>{(language === "fr" ? ["L", "M", "M", "J", "V", "S", "D"] : ["M", "T", "W", "T", "F", "S", "S"]).map((day, index) => <span key={index} className={index === todayIndex ? "today-dot" : ""}>{day}</span>)}</div>
       <button className="home-path-link" onClick={onProgress}>{language === "fr" ? "Voir mon chemin" : "See my path"}<span aria-hidden="true">→</span></button>
     </section>
   </div>;

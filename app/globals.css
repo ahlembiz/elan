@@ -1009,3 +1009,7 @@ html[data-theme="night"] .guided-phrase button { color: var(--teal-deep); }
 .partner-chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 7px 10px; font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
 .partner-chip.solo { background: var(--mint); color: var(--teal); }
 .partner-chip.partner { background: var(--gold-soft); color: var(--gold-deep); }
+
+/* Studio reorganization */
+.studio-topline { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+.planned-more-hint { margin: 12px 4px 0; color: var(--muted); font-size: .88rem; font-weight: 700; }

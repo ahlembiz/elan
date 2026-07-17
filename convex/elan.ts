@@ -481,3 +481,29 @@ export const setConsent = mutation({
     return consent;
   },
 });
+
+export const resetSessions = mutation({
+  args: { secret: v.string(), patientId: v.string() },
+  handler: async (ctx, args) => {
+    requireServerSecret(args.secret);
+    const sessions = await ctx.db.query("planSessions")
+      .withIndex("by_patient", (q) => q.eq("patientId", args.patientId))
+      .collect();
+    for (const session of sessions) await ctx.db.delete(session._id);
+    const entries = await ctx.db.query("planEntries")
+      .withIndex("by_patient", (q) => q.eq("patientId", args.patientId))
+      .collect();
+    let removedEntries = 0;
+    for (const entry of entries) {
+      if (entry.sessionId || entry.category === "exercise") {
+        await ctx.db.delete(entry._id);
+        removedEntries += 1;
+      }
+    }
+    const attempts = await ctx.db.query("attempts")
+      .withIndex("by_patient", (q) => q.eq("patientId", args.patientId))
+      .collect();
+    for (const attempt of attempts) await ctx.db.delete(attempt._id);
+    return { sessions: sessions.length, entries: removedEntries, attempts: attempts.length };
+  },
+});

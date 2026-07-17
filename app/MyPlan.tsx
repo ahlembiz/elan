@@ -122,6 +122,7 @@ function toGuidedSession(session: PlanSession, entries: PlanEntry[], library: Ex
 
 export default function MyPlan({ language, initialTab = "overview", actorRole, attemptCount = 0, onFocusChange }: { language: Language; initialTab?: string; actorRole: ActorRole; attemptCount?: number; onFocusChange?: (focused: boolean) => void }) {
   const normalizedTab = tabs.some((item) => item.id === initialTab) ? initialTab as PlanTab : "overview";
+  const studioMode = actorRole === "patient" && normalizedTab === "exercises";
   const [selectedTab, setSelectedTab] = useState<PlanTab>(normalizedTab);
   const [entries, setEntries] = useState<PlanEntry[]>(fallbackEntries);
   const [library, setLibrary] = useState<ExerciseTemplate[]>([]);
@@ -160,7 +161,7 @@ export default function MyPlan({ language, initialTab = "overview", actorRole, a
   }, []);
 
   const completed = entries.filter((entry) => entry.status === "completed");
-  const momentum = Math.min(480, 40 + attemptCount * 15 + completed.reduce((sum, entry) => sum + entry.points, 0));
+  const momentum = Math.min(480, attemptCount * 15 + completed.reduce((sum, entry) => sum + entry.points, 0));
   const level = Math.min(5, 1 + Math.floor(momentum / 100));
   const levelProgress = Math.min(100, momentum % 100);
 
@@ -369,6 +370,7 @@ export default function MyPlan({ language, initialTab = "overview", actorRole, a
   />;
 
   return <section className="plan-workspace">
+    {!studioMode && <>
     <div className="plan-title-row">
       <div><p className="eyebrow">{actorEyebrow[language === "fr" ? 0 : 1]}</p><h2>{language === "fr" ? "Mon plan" : "My plan"}</h2><p>{language === "fr" ? "Un seul endroit pour choisir une séance, voir ce qui vient et reconnaître chaque progrès." : "One place to choose a session, see what is next, and recognize every step forward."}</p></div>
       <div className="plan-title-actions"><span className={`data-status ${status}`}><i />{status === "loading" ? (language === "fr" ? "Chargement" : "Loading") : status === "saved" ? (language === "fr" ? "Plan synchronisé" : "Plan synced") : (language === "fr" ? "Mode hors ligne" : "Offline mode")}</span><button className="portal-primary" onClick={() => openEditor()}>+ {language === "fr" ? "Ajouter au plan" : "Add to plan"}</button></div>
@@ -377,6 +379,7 @@ export default function MyPlan({ language, initialTab = "overview", actorRole, a
     <nav className="plan-tabs" aria-label={language === "fr" ? "Sections de mon plan" : "My plan sections"}>
       {tabs.map((tab) => <button key={tab.id} className={selectedTab === tab.id ? "selected" : ""} onClick={() => setSelectedTab(tab.id)}><span>{tab.mark}</span>{tabLabel(tab.id, language)}<small>{tab.category ? entries.filter((entry) => entry.category === tab.category && entry.status === "active").length : entries.filter((entry) => entry.status === "active").length}</small></button>)}
     </nav>
+    </>}
 
     <div className="view-enter" key={selectedTab}>
     {selectedTab === "overview" && <>
@@ -391,20 +394,7 @@ export default function MyPlan({ language, initialTab = "overview", actorRole, a
     {selectedTab === "diet" && <div className="plan-safety-note"><span>!</span><div><b>{language === "fr" ? "L’alimentation ne remplace jamais un plan de déglutition." : "Food planning never replaces a swallowing plan."}</b><p>{language === "fr" ? "Élan ne modifie ni textures, ni liquides, ni restrictions. Ces décisions exigent une évaluation et un plan individualisé de votre orthophoniste ou diététiste." : "Élan never changes textures, fluids, or restrictions. Those decisions require assessment and an individualized plan from your speech-language pathologist or dietitian."}</p><a href="https://www.strokebestpractices.ca/recommendations/stroke-rehabilitation-delivery/6-swallowing-nutrition-and-oral-care" target="_blank" rel="noreferrer">{language === "fr" ? "Recommandations canadiennes ↗" : "Canadian recommendations ↗"}</a></div></div>}
 
     {selectedTab === "exercises" ? (actorRole === "patient" ? <>
-      <section className="studio-momentum card-surface">
-        <LevelRing level={level} progress={levelProgress} label={fr ? "niveau" : "level"} />
-        <div className="studio-momentum-copy">
-          <p className="eyebrow">{fr ? "Mon élan" : "My momentum"}</p>
-          <h3>{momentum} {fr ? "points d’élan" : "momentum points"}</h3>
-          <p>{100 - levelProgress} {fr ? "points avant le prochain niveau. Chaque activité compte — le repos ne retire jamais rien." : "points to the next level. Every activity counts — rest never takes anything away."}</p>
-        </div>
-        <div className="studio-momentum-badges">
-          <span><b>{completed.length}</b><small>{fr ? "activités réussies" : "activities done"}</small></span>
-          <span><b>{sessions.filter((session) => session.status === "completed").length}</b><small>{fr ? "séances terminées" : "sessions finished"}</small></span>
-        </div>
-      </section>
-
-      <SessionList sessions={sessions} entries={entries} language={language} onOpen={openSession} />
+      <div className="studio-topline"><span className={`data-status ${status}`}><i />{status === "loading" ? (fr ? "Chargement" : "Loading") : status === "saved" ? (fr ? "Plan synchronisé" : "Plan synced") : (fr ? "Mode hors ligne" : "Offline mode")}</span></div>
 
       <section className="studio-wizard card-surface" aria-labelledby="studio-question">
         <div className="studio-wizard-head">
@@ -467,7 +457,22 @@ export default function MyPlan({ language, initialTab = "overview", actorRole, a
         </div>
       </section>
 
-      {plannedBlock}
+      <SessionList sessions={sessions} entries={entries} language={language} onOpen={openSession} />
+
+      <section className="studio-momentum card-surface">
+        <LevelRing level={level} progress={levelProgress} label={fr ? "niveau" : "level"} />
+        <div className="studio-momentum-copy">
+          <p className="eyebrow">{fr ? "Mon élan" : "My momentum"}</p>
+          <h3>{momentum} {fr ? "points d’élan" : "momentum points"}</h3>
+          <p>{100 - levelProgress} {fr ? "points avant le prochain niveau. Chaque activité compte — le repos ne retire jamais rien." : "points to the next level. Every activity counts — rest never takes anything away."}</p>
+        </div>
+        <div className="studio-momentum-badges">
+          <span><b>{completed.length}</b><small>{fr ? "activités réussies" : "activities done"}</small></span>
+          <span><b>{sessions.filter((session) => session.status === "completed").length}</b><small>{fr ? "séances terminées" : "sessions finished"}</small></span>
+        </div>
+      </section>
+
+      <section id="planned-exercises" className="planned-exercises"><div className="plan-section-heading"><div><p className="eyebrow">{fr ? "Prêtes à compléter" : "Ready to complete"}</p><h3>{fr ? "Exercices dans mon plan" : "Exercises in my plan"}</h3></div><button className="plan-add-inline" onClick={() => openEditor("exercise")}>+ {fr ? "Entrée manuelle" : "Manual entry"}</button></div><div className="plan-entry-list">{visibleEntries.length ? visibleEntries.slice(0, 5).map((entry) => <PlanEntryCard key={entry.id} entry={entry} language={language} saving={savingId === entry.id} onToggle={() => toggleEntry(entry)} />) : <EmptyPlan language={language} onAdd={() => openEditor("exercise")} />}</div>{visibleEntries.length > 5 && <p className="planned-more-hint">{fr ? `${visibleEntries.length - 5} autres exercices dans « Explorer toutes les activités » ci-dessous.` : `${visibleEntries.length - 5} more exercises under “Explore every activity” below.`}</p>}</section>
 
       <section className="curated-library studio-explore">
         <button className="studio-library-toggle" onClick={() => setLibraryOpen((open) => !open)} aria-expanded={libraryOpen}>
@@ -475,7 +480,7 @@ export default function MyPlan({ language, initialTab = "overview", actorRole, a
           <span><b>{fr ? "Explorer toutes les activités" : "Explore every activity"}</b><small>{roleLibrary.length} {fr ? "activités à faire seul, en sécurité" : "activities safe to do on your own"}</small></span>
           <i aria-hidden="true">{libraryOpen ? "▴" : "▾"}</i>
         </button>
-        {libraryOpen && <div className="view-enter">{libraryInner}</div>}
+        {libraryOpen && <div className="view-enter">{visibleEntries.length > 5 && <><div className="plan-section-heading"><div><p className="eyebrow">{fr ? "Aussi dans mon plan" : "Also in my plan"}</p><h3>{fr ? "Le reste de mes exercices" : "The rest of my exercises"}</h3></div></div><div className="plan-entry-list">{visibleEntries.slice(5).map((entry) => <PlanEntryCard key={entry.id} entry={entry} language={language} saving={savingId === entry.id} onToggle={() => toggleEntry(entry)} />)}</div></>}{libraryInner}</div>}
       </section>
     </> : <>
       <SessionBuilder language={language} libraryCount={roleLibrary.length} note={actorRole === "family" ? (fr ? "Séances à faire à deux : chaque activité prévoit la présence d’un partenaire." : "Sessions for two: every activity assumes a partner is present.") : undefined} domain={sessionDomain} setDomain={setSessionDomain} duration={sessionDuration} setDuration={setSessionDuration} effort={sessionEffort} setEffort={setSessionEffort} complexity={sessionComplexity} setComplexity={setSessionComplexity} recommended={recommended} saving={savingId === "session"} onCreate={createSession} />
