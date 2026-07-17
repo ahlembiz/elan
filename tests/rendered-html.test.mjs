@@ -35,10 +35,13 @@ test("the research-backed catalog contains at least 50 graduated exercises", asy
   const topics = catalog.slice(catalog.indexOf("const communicationTopics"), catalog.indexOf("const communicationFamilies")).match(/slug:/g)?.length ?? 0;
   const families = catalog.slice(catalog.indexOf("const communicationFamilies"), catalog.indexOf("const communicationExercises")).match(/slug:/g)?.length ?? 0;
   const mobilityTasks = catalog.match(/\["[^"]+", "[^"]+", "[^"]+"\]/g)?.length ?? 0;
-  assert.ok(topics * families + mobilityTasks >= 50, `catalog generated ${topics * families + mobilityTasks} exercises`);
+  assert.ok(topics * families + mobilityTasks >= 100, `catalog generated ${topics * families + mobilityTasks} exercises`);
   for (const field of ["durationMinutes", "effortLevel", "difficulty", "stage", "assistanceFr", "evidenceUrl"]) assert.match(catalog, new RegExp(field));
   assert.match(catalog, /pubmed\.ncbi\.nlm\.nih\.gov\/29710193/);
   assert.match(catalog, /pubmed\.ncbi\.nlm\.nih\.gov\/24859467/);
+  assert.match(catalog, /pubmed\.ncbi\.nlm\.nih\.gov\/28846724/);
+  assert.match(catalog, /pmc\.ncbi\.nlm\.nih\.gov\/articles\/PMC8371046/);
+  assert.match(catalog, /pubs\.asha\.org/);
   assert.match(catalog, /stroke-rehabilitation-delivery\/7-language-and-communication/);
   assert.match(catalog, /stroke-rehabilitation-delivery\/4-lower-extremity-balance-mobility-and-aerobic-training/);
   assert.match(plan, /ne modifie jamais la dose/);
@@ -80,20 +83,24 @@ test("the patient home and navigation expose older-adult accessibility essential
     readFile(new URL("globals.css", appRoot), "utf8"),
   ]);
 
-  for (const destination of ["Accueil", "Mes séances", "Tableau", "Mon plan", "Progrès"]) assert.match(app, new RegExp(destination));
+  for (const destination of ["Accueil", "Ma séance", "Parler", "Mon plan"]) assert.match(app, new RegExp(destination));
   for (const homeAction of ["Commencer ma séance", "J’ai besoin de communiquer", "Choisir une autre séance"]) assert.match(app, new RegExp(homeAction));
   assert.match(app, /className="skip-link" href="#main-content"/);
   assert.match(app, /aria-current=/);
-  assert.match(app, /className="role-session"/);
+  assert.match(app, /className="settings-button"/);
+  assert.match(app, /className="settings-sheet"/);
   assert.match(app, /className="sign-out-button"/);
-  assert.match(app, /className="help-button"/);
+  assert.match(app, /className="board-yesno"/);
+  assert.match(app, /className="show-screen"/);
   assert.match(app, /Rechercher dans les messages/);
   assert.match(app, /localStorage\.setItem\("elan-text-size", nextSize\)/);
+  assert.match(app, /localStorage\.setItem\("elan-language", next\)/);
   assert.match(app, /aria-pressed=\{textSize === "large"\}/);
   assert.match(css, /html\[data-text-size="large"\]/);
   assert.match(css, /@media \(max-width: 860px\)/);
-  assert.match(css, /\.nav-item \{ min-width: 0; min-height: 78px/);
+  assert.match(css, /\.nav-item \{ min-width: 0; min-height: 84px/);
   assert.match(css, /@media \(forced-colors: active\)/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
 test("Vercel can deploy without the legacy SQLite service", async () => {
@@ -146,6 +153,8 @@ test("Convex persists progress and rotates completed daily sessions", async () =
   assert.match(app, /Commencer ma séance du jour/);
   assert.match(app, /dailyEntries\.map/);
   assert.match(app, /onSessionComplete=\{completeDailySession\}/);
+  assert.match(app, /composeLocalSession/);
+  assert.match(app, /elan-session-variant/);
   assert.match(plan, /setActiveGuidedSession\(toGuidedSession/);
   assert.match(guidedSession, /Vous verrez une activité à la fois/);
   assert.match(guidedSession, /onEntryComplete\(entry\)/);

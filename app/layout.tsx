@@ -1,6 +1,19 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { Atkinson_Hyperlegible, Fraunces } from "next/font/google";
 import "./globals.css";
+
+const display = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-display",
+  axes: ["opsz", "SOFT"],
+});
+
+const body = Atkinson_Hyperlegible({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-body",
+});
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -30,7 +43,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr-CA">
+    <html lang="fr-CA" className={`${display.variable} ${body.variable}`}>
       <body>{children}</body>
     </html>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { exerciseCatalog } from "./api/plan/exerciseCatalog";
 
 export type GuidedSessionEntry = {
   id: string;
@@ -58,6 +59,9 @@ export default function GuidedSession({
   const [replacement, setReplacement] = useState<GuidedSessionData | null>(null);
 
   const entry = session.entries[stepIndex];
+  const template = entry?.exerciseLibraryId ? exerciseCatalog.find((item) => item.id === entry.exerciseLibraryId) : undefined;
+  const practicePhrase = language === "fr" ? template?.practicePhraseFr : template?.practicePhraseEn;
+  const practiceWords = (language === "fr" ? template?.practiceWordsFr : template?.practiceWordsEn) ?? [];
   const completedBefore = session.entries.filter((item, index) => index < stepIndex || item.status === "completed").length;
   const progress = phase === "complete"
     ? 100
@@ -87,6 +91,11 @@ export default function GuidedSession({
     confirmSupervised: "La personne qui doit m’aider est présente.",
     confirmReview: "Cette activité a été approuvée par mon équipe de soins.",
     research: "Voir la source clinique",
+    listen: "Écouter la consigne",
+    phrase: "Votre phrase à pratiquer",
+    words: "Vos mots à pratiquer",
+    listenPhrase: "Écouter la phrase",
+    tapWord: "Touchez un mot pour l’écouter",
     completed: "J’ai terminé cette activité",
     saving: "Enregistrement…",
     saved: "Activité enregistrée.",
@@ -118,6 +127,11 @@ export default function GuidedSession({
     confirmSupervised: "The person who needs to help me is here.",
     confirmReview: "My care team has approved this activity.",
     research: "View the clinical source",
+    listen: "Listen to the instructions",
+    phrase: "Your phrase to practise",
+    words: "Your words to practise",
+    listenPhrase: "Hear the phrase",
+    tapWord: "Tap a word to hear it",
     completed: "I completed this activity",
     saving: "Saving…",
     saved: "Activity saved.",
@@ -129,6 +143,20 @@ export default function GuidedSession({
     nextSession: "View my new session",
     home: "Back to home",
   }, [firstActive, language]);
+
+  const speakText = (text: string) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = language === "fr" ? "fr-CA" : "en-CA";
+    utterance.rate = 0.9;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const speakEntry = () => {
+    if (!entry) return;
+    speakText(`${language === "fr" ? entry.titleFr : entry.titleEn}. ${language === "fr" ? entry.descriptionFr : entry.descriptionEn}`);
+  };
 
   const completeEntry = async () => {
     if (!entry || saving || (needsConfirmation && !safetyConfirmed)) return;
@@ -160,6 +188,9 @@ export default function GuidedSession({
     <div className="guided-session-progress" aria-label={`${progress}%`}>
       <span style={{ width: `${progress}%` }} />
     </div>
+    <div className="guided-step-dots" aria-hidden="true">
+      {session.entries.map((item, index) => <span key={item.id} className={item.status === "completed" || phase === "complete" ? "done" : phase === "exercise" && index === stepIndex ? "current" : ""} />)}
+    </div>
     <div className="guided-session-topbar">
       <span>{phase === "exercise" ? `${labels.step} ${stepIndex + 1} ${labels.of} ${session.entries.length}` : labels.session}</span>
       <button type="button" onClick={onExit}>{labels.exit}</button>
@@ -183,10 +214,23 @@ export default function GuidedSession({
       <button className="guided-primary" type="button" onClick={() => setPhase("exercise")}>{labels.start}<span aria-hidden="true">→</span></button>
     </article>}
 
-    {phase === "exercise" && entry && <article className="guided-session-card guided-exercise">
+    {phase === "exercise" && entry && <article key={entry.id} className="guided-session-card guided-exercise">
       <div className="guided-step-count" aria-live="polite">{labels.step} <strong>{stepIndex + 1}</strong> {labels.of} {session.entries.length}</div>
       <p className="eyebrow">{labels.instructions}</p>
       <h2 id="guided-session-title">{language === "fr" ? entry.titleFr : entry.titleEn}</h2>
+      <button className="guided-listen" type="button" onClick={speakEntry}><span aria-hidden="true">🔊</span>{labels.listen}</button>
+
+      {practicePhrase && <div className="guided-phrase">
+        <small>{labels.phrase}</small>
+        <strong>« {practicePhrase} »</strong>
+        <button type="button" onClick={() => speakText(practicePhrase)}><span aria-hidden="true">🔊</span>{labels.listenPhrase}</button>
+      </div>}
+
+      {practiceWords.length > 0 && <div className="guided-words">
+        <small>{labels.words} · {labels.tapWord}</small>
+        <div>{practiceWords.map((word) => <button key={word} type="button" onClick={() => speakText(word)}><span aria-hidden="true">🔊</span>{word}</button>)}</div>
+      </div>}
+
       <p className="guided-instructions">{language === "fr" ? entry.descriptionFr : entry.descriptionEn}</p>
 
       <div className="guided-support">
@@ -204,10 +248,10 @@ export default function GuidedSession({
         <span>{entry.safetyClass === "supervised" ? labels.confirmSupervised : labels.confirmReview}</span>
       </label>}
 
-      {entry.evidenceUrl && <a className="guided-research" href={entry.evidenceUrl} target="_blank" rel="noreferrer">
-        <span aria-hidden="true">↗</span>
-        <span><small>{labels.research}</small><b>{entry.evidenceTitle}</b></span>
-      </a>}
+      {entry.evidenceUrl && <details className="info-disclosure inline">
+        <summary><span aria-hidden="true">i</span>{labels.research}</summary>
+        <div><a href={entry.evidenceUrl} target="_blank" rel="noreferrer">{entry.evidenceTitle} ↗</a></div>
+      </details>}
 
       <div className="guided-actions">
         {stepIndex > 0 && <button className="guided-back" type="button" onClick={() => { setStepIndex((current) => current - 1); setSafetyConfirmed(false); }} disabled={saving}>← {labels.back}</button>}
@@ -219,7 +263,7 @@ export default function GuidedSession({
     </article>}
 
     {phase === "complete" && <article className="guided-session-card guided-complete">
-      <div className="guided-complete-mark" aria-hidden="true">✓</div>
+      <div className="guided-complete-mark" aria-hidden="true">✓<span className="guided-celebration"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></span></div>
       <p className="eyebrow">{labels.done}</p>
       <h2 id="guided-session-title">{labels.achievement}</h2>
       <p>{replacement ? labels.replacementReady : labels.customDone}</p>

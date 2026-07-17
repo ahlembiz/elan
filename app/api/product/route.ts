@@ -56,7 +56,7 @@ async function initializeProductWorkspace() {
 
   await sqlite.batch([
     sqlite.prepare("INSERT OR IGNORE INTO users (id, email, display_name, role) VALUES ('user-salah', 'salah@elan.local', 'Salah', 'patient')"),
-    sqlite.prepare("INSERT OR IGNORE INTO users (id, email, display_name, role) VALUES ('user-sylvie', 'sylvie@elan.local', 'Sylvie', 'family')"),
+    sqlite.prepare("INSERT OR IGNORE INTO users (id, email, display_name, role) VALUES ('user-sylvie', 'djimmy@elan.local', 'Djimmy', 'family')"),
     sqlite.prepare("INSERT OR IGNORE INTO users (id, email, display_name, role) VALUES ('user-admin', 'admin@elan.local', 'Équipe Élan', 'admin')"),
     sqlite.prepare("INSERT OR IGNORE INTO patient_profiles (id, user_id, preferred_name, primary_goal, supervision_summary, next_review_date) VALUES (?, 'user-salah', 'Salah', ?, ?, '2026-07-16')").bind(PATIENT_ID, "Demander ce dont j’ai besoin avec plus d’autonomie", "Quelqu’un à proximité pour les transferts et exercices debout"),
     sqlite.prepare("INSERT OR IGNORE INTO goals (id, patient_id, domain, title, progress_note, review_date) VALUES ('goal-communication', ?, 'communication', ?, ?, '2026-07-16')").bind(PATIENT_ID, "Utiliser une phrase utile avec un seul indice", "5 mots personnels demandent moins d’aide"),

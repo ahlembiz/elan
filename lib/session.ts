@@ -19,7 +19,7 @@ const identities: Record<ActorRole, { name: string; email: string }> = {
     email: process.env.ELAN_PATIENT_EMAIL || "salah@elan.local",
   },
   family: {
-    name: process.env.ELAN_FAMILY_NAME || "Sylvie",
+    name: process.env.ELAN_FAMILY_NAME || "Djimmy",
     email: process.env.ELAN_FAMILY_EMAIL || "sylvie@elan.local",
   },
   admin: {

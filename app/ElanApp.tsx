@@ -5,6 +5,7 @@ import type { Dispatch, SetStateAction } from "react";
 import GuidedSession from "./GuidedSession";
 import type { GuidedSessionData, GuidedSessionEntry } from "./GuidedSession";
 import MyPlan from "./MyPlan";
+import { exerciseCatalog } from "./api/plan/exerciseCatalog";
 
 type Language = "fr" | "en";
 type View = "today" | "communicate" | "practice" | "plan" | "progress" | "privacy";
@@ -40,19 +41,12 @@ const fallbackData: ProductData = {
 const copy = {
   fr: {
     today: "Accueil",
-    communicate: "Tableau",
-    practice: "Mes séances",
-    progress: "Progrès",
-    help: "Aide",
-    greeting: "Bonjour, Salah",
-    subtitle: "Voici votre programme pour aujourd’hui.",
-    goodMorning: "Aujourd’hui",
-    ready: "Prêt à commencer?",
+    communicate: "Parler",
+    practice: "Ma séance",
+    plan: "Mon plan",
     session: "Votre séance",
-    minutes: "Environ 18 minutes",
     start: "Commencer ma séance",
-    shorter: "Faire une séance plus courte",
-    plan: "Au programme",
+    shorter: "Choisir une autre séance",
     words: "Mes mots importants",
     wordsSub: "3 mots · avec indices",
     movement: "Se lever d’une chaise",
@@ -65,24 +59,16 @@ const copy = {
     next: "Prochain rendez-vous",
     clinician: "Marie-Claude · Orthophoniste",
     board: "Tableau de communication",
-    pause: "Pause",
-    quit: "Quitter",
+    needToTalk: "J’ai besoin de communiquer",
   },
   en: {
     today: "Home",
-    communicate: "Board",
-    practice: "My sessions",
-    progress: "Progress",
-    help: "Help",
-    greeting: "Hello, Salah",
-    subtitle: "Here is your program for today.",
-    goodMorning: "Today",
-    ready: "Ready to begin?",
+    communicate: "Talk",
+    practice: "My session",
+    plan: "My plan",
     session: "Your session",
-    minutes: "About 18 minutes",
     start: "Start my session",
-    shorter: "Choose a shorter session",
-    plan: "Today’s plan",
+    shorter: "Choose another session",
     words: "My important words",
     wordsSub: "3 words · cues available",
     movement: "Stand up from a chair",
@@ -95,37 +81,87 @@ const copy = {
     next: "Next appointment",
     clinician: "Marie-Claude · Speech therapist",
     board: "Communication board",
-    pause: "Pause",
-    quit: "Leave",
+    needToTalk: "I need to communicate",
   },
 };
 
 const boardThemes: readonly BoardTheme[] = [
-  { id: "essential", icon: "✓", fr: "Essentiel", en: "Essentials", messages: [
-    ["Oui", "Yes", "✓"], ["Non", "No", "×"], ["Je ne sais pas", "I don’t know", "?"], ["Attendez, s’il vous plaît", "Please wait", "…"], ["Répétez, s’il vous plaît", "Please repeat", "↺"],
-    ["Je comprends", "I understand", "✓"], ["Je ne comprends pas", "I don’t understand", "?"], ["Montrez-moi", "Show me", "☝"], ["Écrivez-le", "Write it down", "✎"], ["Merci", "Thank you", "♥"],
+  { id: "essential", icon: "⭐", fr: "Essentiel", en: "Essentials", messages: [
+    ["Oui", "Yes", "✅"], ["Non", "No", "❌"], ["Je ne sais pas", "I don’t know", "🤷"], ["Attendez, s’il vous plaît", "Please wait", "✋"], ["Répétez, s’il vous plaît", "Please repeat", "🔁"],
+    ["Je comprends", "I understand", "👍"], ["Je ne comprends pas", "I don’t understand", "😕"], ["Montrez-moi", "Show me", "👉"], ["Écrivez-le", "Write it down", "✏️"], ["Merci", "Thank you", "💛"],
   ] },
-  { id: "health", icon: "+", fr: "Santé", en: "Health", messages: [
-    ["J’ai besoin d’aide", "I need help", "+"], ["J’ai mal", "I am in pain", "!"], ["Je suis étourdi", "I feel dizzy", "◎"], ["Je suis essoufflé", "I am short of breath", "≈"], ["Je suis fatigué", "I am tired", "z"],
-    ["J’ai chaud", "I am hot", "☀"], ["J’ai froid", "I am cold", "❄"], ["J’ai besoin de mes médicaments", "I need my medication", "+"], ["Appelez l’infirmière", "Call the nurse", "☎"], ["Arrêtons maintenant", "Let’s stop now", "■"],
+  { id: "health", icon: "🩺", fr: "Santé", en: "Health", messages: [
+    ["J’ai besoin d’aide", "I need help", "🆘"], ["J’ai mal", "I am in pain", "😣"], ["Je suis étourdi", "I feel dizzy", "💫"], ["Je suis essoufflé", "I am short of breath", "😮‍💨"], ["Je suis fatigué", "I am tired", "😴"],
+    ["J’ai chaud", "I am hot", "🥵"], ["J’ai froid", "I am cold", "🥶"], ["J’ai besoin de mes médicaments", "I need my medication", "💊"], ["Appelez l’infirmière", "Call the nurse", "👩‍⚕️"], ["Arrêtons maintenant", "Let’s stop now", "🛑"],
   ] },
-  { id: "feelings", icon: "♥", fr: "Émotions", en: "Feelings", messages: [
-    ["Je vais bien", "I feel well", "☺"], ["Je suis calme", "I feel calm", "○"], ["Je suis inquiet", "I am worried", "~"], ["Je suis frustré", "I am frustrated", "!"], ["Je suis triste", "I am sad", "◡"],
-    ["Je suis content", "I am happy", "☀"], ["J’ai peur", "I am afraid", "△"], ["J’ai besoin d’une pause", "I need a break", "Ⅱ"], ["Restez avec moi", "Stay with me", "♥"], ["J’aimerais être seul", "I would like privacy", "○"],
+  { id: "feelings", icon: "❤️", fr: "Émotions", en: "Feelings", messages: [
+    ["Je vais bien", "I feel well", "😊"], ["Je suis calme", "I feel calm", "😌"], ["Je suis inquiet", "I am worried", "😟"], ["Je suis frustré", "I am frustrated", "😤"], ["Je suis triste", "I am sad", "😢"],
+    ["Je suis content", "I am happy", "😄"], ["J’ai peur", "I am afraid", "😨"], ["J’ai besoin d’une pause", "I need a break", "⏸️"], ["Restez avec moi", "Stay with me", "🤝"], ["J’aimerais être seul", "I would like privacy", "🚪"],
   ] },
-  { id: "food", icon: "C", fr: "Repas", en: "Food & drink", messages: [
-    ["J’ai faim", "I am hungry", "F"], ["J’ai soif", "I am thirsty", "D"], ["Je voudrais de l’eau", "I would like water", "W"], ["Je voudrais du café", "I would like coffee", "C"], ["Encore, s’il vous plaît", "More, please", "+"],
-    ["C’est assez", "That is enough", "■"], ["J’aime ça", "I like this", "♥"], ["Je n’aime pas ça", "I don’t like this", "×"], ["Quelle est la texture prescrite?", "What texture is prescribed?", "?"], ["J’ai besoin de temps pour avaler", "I need time to swallow", "…"],
+  { id: "food", icon: "🍽️", fr: "Repas", en: "Food & drink", messages: [
+    ["J’ai faim", "I am hungry", "🍽️"], ["J’ai soif", "I am thirsty", "🥤"], ["Je voudrais de l’eau", "I would like water", "💧"], ["Je voudrais du café", "I would like coffee", "☕"], ["Encore, s’il vous plaît", "More, please", "➕"],
+    ["C’est assez", "That is enough", "🙅"], ["J’aime ça", "I like this", "😋"], ["Je n’aime pas ça", "I don’t like this", "👎"], ["Quelle est la texture prescrite?", "What texture is prescribed?", "❓"], ["J’ai besoin de temps pour avaler", "I need time to swallow", "⏳"],
   ] },
-  { id: "people", icon: "P", fr: "Personnes et lieux", en: "People & places", messages: [
-    ["Je veux voir ma famille", "I want to see my family", "P"], ["Appelez Sylvie", "Call Sylvie", "☎"], ["Où est Salah?", "Where is Salah?", "?"], ["Je veux rentrer à la maison", "I want to go home", "H"], ["Je veux aller dehors", "I want to go outside", "O"],
-    ["Je veux aller aux toilettes", "I need the washroom", "T"], ["Où sommes-nous?", "Where are we?", "?"], ["Qui est cette personne?", "Who is this person?", "P"], ["Je veux parler au médecin", "I want to speak with the doctor", "+"], ["Je veux parler en privé", "I want to talk privately", "○"],
+  { id: "people", icon: "👥", fr: "Personnes et lieux", en: "People & places", messages: [
+    ["Je veux voir ma famille", "I want to see my family", "👨‍👩‍👧"], ["Appelez Djimmy", "Call Djimmy", "📞"], ["Où est Salah?", "Where is Salah?", "🔎"], ["Je veux rentrer à la maison", "I want to go home", "🏠"], ["Je veux aller dehors", "I want to go outside", "🌳"],
+    ["Je veux aller aux toilettes", "I need the washroom", "🚻"], ["Où sommes-nous?", "Where are we?", "📍"], ["Qui est cette personne?", "Who is this person?", "🤔"], ["Je veux parler au médecin", "I want to speak with the doctor", "🩺"], ["Je veux parler en privé", "I want to talk privately", "🤫"],
   ] },
-  { id: "plans", icon: "R", fr: "Temps et projets", en: "Time & plans", messages: [
-    ["Quelle heure est-il?", "What time is it?", "◷"], ["Quel jour sommes-nous?", "What day is it?", "D"], ["Qu’est-ce qui est prévu?", "What is planned?", "?"], ["J’ai un rendez-vous", "I have an appointment", "R"], ["Je veux changer le plan", "I want to change the plan", "↺"],
-    ["Maintenant", "Now", "N"], ["Plus tard", "Later", "L"], ["Demain", "Tomorrow", "D"], ["Je suis prêt", "I am ready", "✓"], ["Je ne suis pas prêt", "I am not ready", "×"],
+  { id: "plans", icon: "📅", fr: "Temps et projets", en: "Time & plans", messages: [
+    ["Quelle heure est-il?", "What time is it?", "🕐"], ["Quel jour sommes-nous?", "What day is it?", "📅"], ["Qu’est-ce qui est prévu?", "What is planned?", "🗓️"], ["J’ai un rendez-vous", "I have an appointment", "📌"], ["Je veux changer le plan", "I want to change the plan", "🔄"],
+    ["Maintenant", "Now", "▶️"], ["Plus tard", "Later", "⏰"], ["Demain", "Tomorrow", "🌅"], ["Je suis prêt", "I am ready", "✅"], ["Je ne suis pas prêt", "I am not ready", "⛔"],
   ] },
 ];
+
+const allMessages = boardThemes.flatMap((theme) => theme.messages);
+const yesMessage = boardThemes[0].messages[0];
+const noMessage = boardThemes[0].messages[1];
+
+function readUsage(): Record<string, number> {
+  try { return JSON.parse(window.localStorage.getItem("elan-board-usage") || "{}") as Record<string, number>; }
+  catch { return {}; }
+}
+
+function topicOf(title: string) {
+  return title.split("\u00b7")[1]?.trim() ?? title;
+}
+
+function composeLocalSession(variant: number): GuidedSessionData {
+  const communication = exerciseCatalog.filter((item) => item.domain === "communication" && !item.requiresPartner && item.durationMinutes <= 10);
+  const mobility = exerciseCatalog.filter((item) => item.domain === "mobility" && !item.requiresPartner && item.durationMinutes <= 10);
+  const first = communication[(variant * 7) % communication.length];
+  const movement = mobility[(variant * 5 + 2) % mobility.length];
+  let second = communication[(variant * 7 + 9) % communication.length];
+  for (let bump = 1; bump <= communication.length && (second.id === first.id || topicOf(second.titleFr) === topicOf(first.titleFr)); bump += 1) {
+    second = communication[(variant * 7 + 9 + bump) % communication.length];
+  }
+  const picks = [first, movement, second];
+  const entries: GuidedSessionEntry[] = picks.map((item, index) => ({
+    id: `local-entry-${variant}-${index}`,
+    titleFr: item.titleFr,
+    titleEn: item.titleEn,
+    descriptionFr: item.instructionsFr,
+    descriptionEn: item.instructionsEn,
+    assistanceFr: item.assistanceFr,
+    assistanceEn: item.assistanceEn,
+    evidenceTitle: item.evidenceTitle,
+    evidenceUrl: item.evidenceUrl,
+    safetyClass: item.safetyClass,
+    durationMinutes: item.durationMinutes,
+    effortLevel: item.effortLevel,
+    status: "active",
+    exerciseLibraryId: item.id,
+  }));
+  return {
+    id: `local-session-${variant}`,
+    kind: "daily",
+    titleFr: "Ma séance du jour",
+    titleEn: "Today’s session",
+    targetDuration: entries.reduce((sum, entry) => sum + (entry.durationMinutes ?? 5), 0),
+    effortLevel: Math.max(1, Math.round(picks.reduce((sum, item) => sum + item.effortLevel, 0) / picks.length)),
+    status: "active",
+    entries,
+  };
+}
 
 export default function ElanApp({ initialRole, currentName }: { initialRole: Role; currentName: string }) {
   const [language, setLanguage] = useState<Language>("fr");
@@ -137,7 +173,9 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
   const [productData, setProductData] = useState<ProductData>(fallbackData);
   const [dataStatus, setDataStatus] = useState<"loading" | "saved" | "offline">("loading");
   const [boardOpen, setBoardOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [sessionOpen, setSessionOpen] = useState(false);
+  const [planFocus, setPlanFocus] = useState(false);
   const [guidedSession, setGuidedSession] = useState<GuidedSessionData | null>(null);
   const [sessionStep, setSessionStep] = useState<SessionStep>("checkin");
   const [energy, setEnergy] = useState<number | null>(null);
@@ -147,13 +185,28 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
   const [consentOpen, setConsentOpen] = useState(false);
   const [helper, setHelper] = useState(false);
   const [spoken, setSpoken] = useState<string | null>(null);
+  const [showBig, setShowBig] = useState<BoardMessage | null>(null);
   const [boardTheme, setBoardTheme] = useState<BoardThemeId>("essential");
   const [boardSearch, setBoardSearch] = useState("");
+  const [usage, setUsage] = useState<Record<string, number>>({});
+  const [toast, setToast] = useState<{ text: string; tone: "success" | "error" } | null>(null);
+  const [daypart, setDaypart] = useState<"morning" | "afternoon" | "evening" | null>(null);
+  const [dateLine, setDateLine] = useState("");
+  const [localVariant, setLocalVariant] = useState(0);
+  const variantRef = useRef(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordingStartedRef = useRef(0);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const boardSearchRef = useRef<HTMLInputElement | null>(null);
   const t = copy[language];
+
+  const notify = (text: string, tone: "success" | "error" = "success") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ text, tone });
+    toastTimerRef.current = setTimeout(() => setToast(null), 3600);
+  };
 
   useEffect(() => {
     fetch("/api/product")
@@ -161,6 +214,46 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
       .then((data: ProductData) => { setProductData(data); setDataStatus("saved"); })
       .catch(() => setDataStatus("offline"));
   }, []);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("elan-language");
+    const preferred: Language | null = stored === "fr" || stored === "en" ? stored : null;
+    const hour = new Date().getHours();
+    const storedVariant = Math.max(0, Number(window.localStorage.getItem("elan-session-variant")) || 0);
+    variantRef.current = storedVariant;
+    const frame = window.requestAnimationFrame(() => {
+      if (preferred) setLanguage(preferred);
+      setDaypart(hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening");
+      setUsage(readUsage());
+      setLocalVariant(storedVariant);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  const advanceVariant = () => {
+    variantRef.current += 1;
+    window.localStorage.setItem("elan-session-variant", String(variantRef.current));
+    setLocalVariant(variantRef.current);
+  };
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setDateLine(new Date().toLocaleDateString(language === "fr" ? "fr-CA" : "en-CA", { weekday: "long", day: "numeric", month: "long" }));
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [language]);
+
+  useEffect(() => {
+    if (!boardOpen && !consentOpen && !settingsOpen && !showBig) return;
+    const frame = boardOpen && !showBig ? window.requestAnimationFrame(() => boardSearchRef.current?.focus({ preventScroll: true })) : 0;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (showBig) { setShowBig(null); return; }
+      setBoardOpen(false); setConsentOpen(false); setSettingsOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); if (frame) window.cancelAnimationFrame(frame); };
+  }, [boardOpen, consentOpen, settingsOpen, showBig]);
 
   useEffect(() => {
     const stored = window.localStorage.getItem("elan-text-size");
@@ -192,34 +285,38 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
     window.localStorage.setItem("elan-text-size", nextSize);
   };
 
+  const chooseLanguage = (next: Language) => {
+    setLanguage(next);
+    window.localStorage.setItem("elan-language", next);
+  };
+
   const nav = useMemo(() => {
     if (role === "family") return [
-      { id: "overview", label: language === "fr" ? "Accueil" : "Home", mark: "⌂" },
-      { id: "plan", label: language === "fr" ? "Séances" : "Sessions", mark: "▶" },
-      { id: "conversations", label: language === "fr" ? "Communiquer" : "Communicate", mark: "••" },
-      { id: "observations", label: language === "fr" ? "Notes" : "Notes", mark: "✎" },
-      { id: "guidance", label: language === "fr" ? "Conseils" : "Guidance", mark: "?" },
+      { id: "overview", label: language === "fr" ? "Accueil" : "Home", mark: "🏠" },
+      { id: "plan", label: language === "fr" ? "Séances" : "Sessions", mark: "🎯" },
+      { id: "conversations", label: language === "fr" ? "Communiquer" : "Communicate", mark: "💬" },
+      { id: "observations", label: language === "fr" ? "Notes" : "Notes", mark: "✏️" },
+      { id: "guidance", label: language === "fr" ? "Conseils" : "Guidance", mark: "💡" },
     ];
     if (role === "admin") return [
-      { id: "overview", label: language === "fr" ? "Vue d’ensemble" : "Overview", mark: "⌂" },
-      { id: "appointments", label: language === "fr" ? "Rendez-vous" : "Appointments", mark: "◷" },
-      { id: "todos", label: language === "fr" ? "Tâches" : "To-dos", mark: "✓" },
-      { id: "diet", label: language === "fr" ? "Alimentation" : "Diet", mark: "○" },
-      { id: "exercises", label: language === "fr" ? "Bibliothèque" : "Library", mark: "▶" },
+      { id: "overview", label: language === "fr" ? "Vue d’ensemble" : "Overview", mark: "🏠" },
+      { id: "appointments", label: language === "fr" ? "Rendez-vous" : "Appointments", mark: "📅" },
+      { id: "todos", label: language === "fr" ? "Tâches" : "To-dos", mark: "✅" },
+      { id: "diet", label: language === "fr" ? "Alimentation" : "Diet", mark: "🍽️" },
+      { id: "exercises", label: language === "fr" ? "Bibliothèque" : "Library", mark: "📚" },
     ];
     return [
-      { id: "today", label: t.today, mark: "⌂" },
-      { id: "practice", label: t.practice, mark: "▶" },
-      { id: "communicate", label: t.communicate, mark: "••" },
-      { id: "plan", label: language === "fr" ? "Mon plan" : "My plan", mark: "☷" },
-      { id: "progress", label: t.progress, mark: "↗" },
+      { id: "today", label: t.today, mark: "🏠" },
+      { id: "practice", label: t.practice, mark: "🎯" },
+      { id: "communicate", label: t.communicate, mark: "💬" },
+      { id: "plan", label: t.plan, mark: "📋" },
     ];
   }, [t, role, language]);
 
   const roleIdentity = role === "patient"
-    ? { initials: "SL", name: currentName, detail: language === "fr" ? "Mon profil" : "My profile" }
+    ? { initials: "SL", name: currentName, detail: language === "fr" ? "Mon espace" : "My space" }
     : role === "family"
-      ? { initials: "SY", name: currentName, detail: language === "fr" ? "Partenaire" : "Partner" }
+      ? { initials: "DJ", name: currentName, detail: language === "fr" ? "Partenaire" : "Partner" }
       : { initials: "ÉA", name: currentName, detail: language === "fr" ? "Administration" : "Administration" };
 
   const signOut = async () => {
@@ -227,13 +324,18 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
     window.location.assign("/login");
   };
 
+  const localSession = useMemo(() => composeLocalSession(localVariant), [localVariant]);
+  const upcomingSession = productData.dailySession ?? localSession;
+
   const beginSession = () => {
-    if (productData.dailySession) setGuidedSession(productData.dailySession);
+    setGuidedSession(upcomingSession);
     setSessionStep("checkin");
     setSessionOpen(true);
+    if (!productData.dailySession) advanceVariant();
   };
 
   const completeGuidedEntry = async (entry: GuidedSessionEntry) => {
+    if (entry.id.startsWith("local-")) return;
     const response = await fetch("/api/plan", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -251,6 +353,12 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
   };
 
   const completeDailySession = async (session: GuidedSessionData) => {
+    if (session.id.startsWith("local-session")) {
+      const replacement = composeLocalSession(variantRef.current);
+      advanceVariant();
+      notify(language === "fr" ? "Bravo — votre séance est terminée. Une nouvelle est prête." : "Well done — session complete. A new one is ready.");
+      return replacement;
+    }
     const response = await fetch("/api/plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -260,6 +368,7 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
     const result = await response.json() as { replacement: GuidedSessionData | null };
     setProductData((current) => ({ ...current, dailySession: result.replacement ?? undefined }));
     setDataStatus("saved");
+    notify(language === "fr" ? "Bravo — votre séance du jour est terminée." : "Well done — today’s session is complete.");
     return result.replacement;
   };
 
@@ -270,8 +379,10 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
       const { attempt } = await response.json();
       setProductData((current) => ({ ...current, attempts: [attempt, ...current.attempts] }));
       setDataStatus("saved");
+      notify(language === "fr" ? "Votre séance est enregistrée." : "Your session has been saved.");
     } catch {
       setDataStatus("offline");
+      notify(language === "fr" ? "Impossible d’enregistrer. Vérifiez la connexion." : "Could not save. Check your connection.", "error");
     }
   };
 
@@ -285,8 +396,10 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
       setProductData((current) => ({ ...current, consents: [consent, ...current.consents.filter((item) => item.consentType !== "voice_recording")] }));
       setDataStatus("saved");
       setConsentOpen(false);
+      notify(language === "fr" ? "Votre choix a été enregistré." : "Your choice has been saved.");
     } catch {
       setDataStatus("offline");
+      notify(language === "fr" ? "Impossible d’enregistrer votre choix. Réessayez." : "Could not save your choice. Please try again.", "error");
     }
   };
 
@@ -336,25 +449,52 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
     }
   };
 
-  const speakMessage = (message: string) => {
-    setSpoken(message);
+  const speakText = (message: string) => {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(message);
       utterance.lang = language === "fr" ? "fr-CA" : "en-CA";
+      utterance.rate = 0.92;
       window.speechSynthesis.speak(utterance);
     }
   };
 
+  const speakMessage = (message: BoardMessage) => {
+    const text = language === "fr" ? message[0] : message[1];
+    setSpoken(text);
+    speakText(text);
+    setUsage((current) => {
+      const next = { ...current, [message[0]]: (current[message[0]] ?? 0) + 1 };
+      try { window.localStorage.setItem("elan-board-usage", JSON.stringify(next)); } catch { /* storage unavailable */ }
+      return next;
+    });
+  };
+
+  const spokenMessage = spoken ? allMessages.find((message) => message[0] === spoken || message[1] === spoken) ?? null : null;
+
+  const frequents = useMemo(() => {
+    return Object.entries(usage)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([fr]) => allMessages.find((message) => message[0] === fr))
+      .filter((message): message is BoardMessage => Boolean(message));
+  }, [usage]);
+
   const activeBoardTheme = boardThemes.find((themeItem) => themeItem.id === boardTheme) ?? boardThemes[0];
   const boardQuery = boardSearch.trim().toLocaleLowerCase(language === "fr" ? "fr-CA" : "en-CA");
-  const boardResults = (boardQuery ? boardThemes.flatMap((themeItem) => themeItem.messages) : activeBoardTheme.messages)
+  const boardResults = (boardQuery ? allMessages : activeBoardTheme.messages)
+    .filter((message) => !(boardTheme === "essential" && !boardQuery && (message === yesMessage || message === noMessage)))
     .filter((message) => !boardQuery || `${message[0]} ${message[1]}`.toLocaleLowerCase(language === "fr" ? "fr-CA" : "en-CA").includes(boardQuery));
 
-  const patientPageTitle = view === "today" ? t.greeting : view === "practice" ? t.practice : view === "communicate" ? (language === "fr" ? "Communiquer" : "Communicate") : view === "plan" ? (language === "fr" ? "Mon plan" : "My plan") : view === "progress" ? (language === "fr" ? "Mes progrès" : "My progress") : (language === "fr" ? "Aide et confidentialité" : "Help and privacy");
+  const greeting = role !== "patient"
+    ? (language === "fr" ? `Bonjour, ${currentName}` : `Hello, ${currentName}`)
+    : `${daypart === "afternoon" ? (language === "fr" ? "Bon après-midi" : "Good afternoon") : daypart === "evening" ? (language === "fr" ? "Bonsoir" : "Good evening") : (language === "fr" ? "Bonjour" : "Good morning")}, ${currentName}`;
+
+  const patientPageTitle = view === "today" ? greeting : view === "practice" ? t.practice : view === "communicate" ? (language === "fr" ? "Communiquer" : "Communicate") : view === "plan" ? t.plan : view === "progress" ? (language === "fr" ? "Mon chemin" : "My path") : (language === "fr" ? "Aide et confidentialité" : "Help and privacy");
+  const focusMode = sessionOpen || planFocus;
 
   return (
-    <div className="app-shell">
+    <div className={focusMode ? "app-shell focus-mode" : "app-shell"}>
       <a className="skip-link" href="#main-content">{language === "fr" ? "Aller au contenu principal" : "Skip to main content"}</a>
       <aside className="side-nav" aria-label={language === "fr" ? "Navigation principale" : "Main navigation"}>
         <button className="brand" onClick={() => { if (role === "patient") setView("today"); else setPortalTab("overview"); setSessionOpen(false); }} aria-label="Élan, accueil">
@@ -363,13 +503,13 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
         </button>
         <nav>
           {nav.map((item) => (
-            <button key={item.id} aria-current={(role === "patient" ? view === item.id : portalTab === item.id) ? "page" : undefined} className={(role === "patient" ? view === item.id : portalTab === item.id) ? "nav-item active" : "nav-item"} onClick={() => { setSessionOpen(false); if (role === "patient") { setView(item.id as View); if (item.id === "communicate") setBoardOpen(true); } else setPortalTab(item.id); }}>
+            <button key={item.id} aria-current={(role === "patient" ? view === item.id : portalTab === item.id) ? "page" : undefined} className={(role === "patient" ? view === item.id : portalTab === item.id) ? "nav-item active" : "nav-item"} onClick={() => { setSessionOpen(false); if (role === "patient") { if (item.id === "communicate") { setBoardOpen(true); return; } setView(item.id as View); } else setPortalTab(item.id); }}>
               <span className="nav-mark" aria-hidden="true">{item.mark}</span>
               <span>{item.label}</span>
             </button>
           ))}
         </nav>
-        <button className="profile-pill" onClick={() => { setSessionOpen(false); if (role === "patient") setView("privacy"); else setPortalTab("overview"); }} aria-label={`${roleIdentity.name} — ${roleIdentity.detail}`}>
+        <button className="profile-pill" onClick={() => setSettingsOpen(true)} aria-label={`${roleIdentity.name} — ${language === "fr" ? "Ouvrir les réglages" : "Open settings"}`}>
           <span>{roleIdentity.initials}</span>
           <span className="profile-copy">{roleIdentity.name}<br /><small>{roleIdentity.detail}</small></span>
         </button>
@@ -378,26 +518,22 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
       <main className="main-content" id="main-content" tabIndex={-1}>
         <header className="topbar">
           <div>
-            <p className="eyebrow">{role === "patient" ? t.goodMorning : role === "family" ? (language === "fr" ? "Mode partenaire" : "Partner mode") : (language === "fr" ? "Administration du plan" : "Plan administration")}</p>
-            <h1>{sessionOpen ? (language === "fr" ? "Ma séance" : "My session") : role === "patient" ? patientPageTitle : role === "family" ? (language === "fr" ? "Bonjour, Sylvie" : "Hello, Sylvie") : (language === "fr" ? "Plan de Salah" : "Salah’s plan")}</h1>
+            <p className="eyebrow">{role === "patient" ? (dateLine || "Élan") : role === "family" ? (language === "fr" ? "Mode partenaire" : "Partner mode") : (language === "fr" ? "Administration du plan" : "Plan administration")}</p>
+            <h1>{sessionOpen ? (language === "fr" ? "Ma séance" : "My session") : role === "patient" ? patientPageTitle : role === "family" ? (language === "fr" ? "Bonjour, Djimmy" : "Hello, Djimmy") : (language === "fr" ? "Plan de Salah" : "Salah’s plan")}</h1>
           </div>
           <div className="top-actions">
-            <div className="role-session" aria-label={`${language === "fr" ? "Espace" : "Space"}: ${roleIdentity.name}`}><span>{roleIdentity.initials}</span><strong>{roleIdentity.name}</strong></div>
-            <div className="language-switch" role="group" aria-label={language === "fr" ? "Choisir la langue" : "Choose language"}>
-              <button className={language === "fr" ? "selected" : ""} onClick={() => setLanguage("fr")} aria-pressed={language === "fr"}>FR</button>
-              <button className={language === "en" ? "selected" : ""} onClick={() => setLanguage("en")} aria-pressed={language === "en"}>EN</button>
-            </div>
-            <button className="text-size-button" onClick={toggleTextSize} aria-label={textSize === "standard" ? (language === "fr" ? "Agrandir le texte" : "Make text larger") : (language === "fr" ? "Taille de texte standard" : "Use standard text size")} aria-pressed={textSize === "large"}><span aria-hidden="true">{textSize === "standard" ? "A+" : "A"}</span><small>{textSize === "standard" ? (language === "fr" ? "Agrandir" : "Larger") : (language === "fr" ? "Standard" : "Standard")}</small></button>
-            <button className="theme-button" onClick={toggleTheme} aria-label={theme === "day" ? (language === "fr" ? "Activer le thème de nuit" : "Use night theme") : (language === "fr" ? "Activer le thème de jour" : "Use day theme")} aria-pressed={theme === "night"}><span aria-hidden="true">{theme === "day" ? "☾" : "☀"}</span><small>{theme === "day" ? (language === "fr" ? "Nuit" : "Night") : (language === "fr" ? "Jour" : "Day")}</small></button>
-            <button className="audio-button" onClick={() => speakMessage(sessionOpen ? (language === "fr" ? "Ma séance" : "My session") : `${t.greeting}. ${t.subtitle}`)} aria-label={language === "fr" ? "Écouter cette page" : "Listen to this page"}>
-              <span aria-hidden="true">)))</span>
+            <button className="audio-button" onClick={() => speakText(sessionOpen ? (language === "fr" ? "Ma séance" : "My session") : `${patientPageTitle}.`)} aria-label={language === "fr" ? "Écouter cette page" : "Listen to this page"}>
+              <span aria-hidden="true">🔊</span>
               {language === "fr" ? "Écouter" : "Listen"}
             </button>
-            {role === "patient" && <button className="help-button" onClick={() => { setSessionOpen(false); setView("privacy"); }}><span aria-hidden="true">?</span>{language === "fr" ? "Aide" : "Help"}</button>}
-            <button className="sign-out-button" onClick={signOut}>{language === "fr" ? "Quitter" : "Sign out"}</button>
+            <button className="settings-button" onClick={() => setSettingsOpen(true)} aria-haspopup="dialog">
+              <span aria-hidden="true">⚙</span>
+              {language === "fr" ? "Réglages" : "Settings"}
+            </button>
           </div>
         </header>
 
+        <div className="view-enter" key={sessionOpen ? "session" : role === "patient" ? view : portalTab}>
         {sessionOpen && guidedSession ? (
           <GuidedSession
             key={guidedSession.id}
@@ -427,57 +563,124 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
             onComplete={saveSession}
           />
         ) : role === "family" && portalTab === "plan" ? (
-          <MyPlan language={language} initialTab="exercises" actorRole="family" attemptCount={productData.attempts.length} />
+          <MyPlan language={language} initialTab="exercises" actorRole="family" attemptCount={productData.attempts.length} onFocusChange={setPlanFocus} />
         ) : role === "family" ? (
           <FamilyPortal language={language} tab={portalTab} data={productData} dataStatus={dataStatus} setData={setProductData} setDataStatus={setDataStatus} onBoard={() => setBoardOpen(true)} onPlan={() => setPortalTab("plan")} />
         ) : role === "admin" ? (
           <MyPlan key={portalTab} language={language} initialTab={portalTab} actorRole="admin" attemptCount={productData.attempts.length} />
         ) : view === "today" ? (
-          <Today language={language} onStart={beginSession} onLibrary={() => setView("practice")} onPlan={() => setView("plan")} onBoard={() => setBoardOpen(true)} onProgress={() => setView("progress")} attemptCount={productData.attempts.length} dailySession={productData.dailySession} />
+          <Home language={language} onStart={beginSession} onShuffle={advanceVariant} onLibrary={() => setView("practice")} onPlan={() => setView("plan")} onBoard={() => setBoardOpen(true)} onProgress={() => setView("progress")} attemptCount={productData.attempts.length} dailySession={upcomingSession} isPlanned={Boolean(productData.dailySession)} />
         ) : view === "progress" ? (
-          <Progress language={language} />
+          <Progress language={language} onHome={() => setView("today")} />
         ) : view === "practice" ? (
-          <MyPlan language={language} initialTab="exercises" actorRole="patient" attemptCount={productData.attempts.length} />
+          <MyPlan language={language} initialTab="exercises" actorRole="patient" attemptCount={productData.attempts.length} onFocusChange={setPlanFocus} />
         ) : view === "plan" ? (
-          <MyPlan language={language} actorRole="patient" attemptCount={productData.attempts.length} />
-        ) : view === "privacy" ? (
-          <PrivacyCenter language={language} data={productData} setData={setProductData} onConsent={updateConsent} dataStatus={dataStatus} />
+          <MyPlan language={language} actorRole="patient" attemptCount={productData.attempts.length} onFocusChange={setPlanFocus} />
         ) : (
-          <SimpleView language={language} view={view} onBoard={() => setBoardOpen(true)} onPlan={() => setView("practice")} />
+          <PrivacyCenter language={language} data={productData} setData={setProductData} onConsent={updateConsent} dataStatus={dataStatus} />
         )}
+        </div>
       </main>
 
-      {role === "patient" && <button className="quick-board" onClick={() => setBoardOpen(true)}>
-        <span aria-hidden="true">•••</span>
-        {t.board}
+      {role === "patient" && !sessionOpen && !boardOpen && <button className="quick-board" onClick={() => setBoardOpen(true)}>
+        <span aria-hidden="true">💬</span>
+        {t.communicate}
       </button>}
 
       {boardOpen && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setBoardOpen(false); }}>
-          <section className="board-modal" role="dialog" aria-modal="true" aria-labelledby="board-title">
-            <div className="modal-header">
+        <div className="board-screen" role="dialog" aria-modal="true" aria-labelledby="board-title">
+          <div className="board-inner">
+            <div className="board-top">
               <div>
                 <p className="eyebrow">{language === "fr" ? "Toujours disponible" : "Always available"}</p>
                 <h2 id="board-title">{t.board}</h2>
               </div>
-              <button className="close-button" onClick={() => setBoardOpen(false)} aria-label={language === "fr" ? "Fermer" : "Close"}>×</button>
+              <button className="close-button" onClick={() => setBoardOpen(false)} aria-label={language === "fr" ? "Fermer le tableau" : "Close the board"}>×</button>
             </div>
-            <p className="board-instruction">{language === "fr" ? "Choisissez un thème, puis touchez un message pour le faire lire à voix haute." : "Choose a theme, then tap a message to say it aloud."}</p>
-            <label className="board-search"><span aria-hidden="true">⌕</span><input value={boardSearch} onChange={(event) => setBoardSearch(event.target.value)} aria-label={language === "fr" ? "Rechercher dans les messages" : "Search messages"} placeholder={language === "fr" ? "Rechercher parmi 60 messages" : "Search 60 messages"} /></label>
+
+            <div className="board-yesno" role="group" aria-label={language === "fr" ? "Réponses rapides" : "Quick answers"}>
+              <button className="yes" onClick={() => speakMessage(yesMessage)}><span aria-hidden="true">✅</span>{language === "fr" ? "Oui" : "Yes"}</button>
+              <button className="no" onClick={() => speakMessage(noMessage)}><span aria-hidden="true">❌</span>{language === "fr" ? "Non" : "No"}</button>
+            </div>
+
+            <label className="board-search"><span aria-hidden="true">⌕</span><input ref={boardSearchRef} value={boardSearch} onChange={(event) => setBoardSearch(event.target.value)} aria-label={language === "fr" ? "Rechercher dans les messages" : "Search messages"} placeholder={language === "fr" ? "Rechercher parmi 60 messages" : "Search 60 messages"} />{boardSearch && <button type="button" className="board-clear" onClick={() => { setBoardSearch(""); boardSearchRef.current?.focus(); }} aria-label={language === "fr" ? "Effacer la recherche" : "Clear search"}>×</button>}</label>
+
+            {!boardQuery && frequents.length > 0 && (
+              <div className="board-frequents" aria-label={language === "fr" ? "Messages fréquents" : "Frequent messages"}>
+                <span className="board-frequents-label">{language === "fr" ? "Fréquents" : "Frequent"}</span>
+                {frequents.map((message) => <button key={`frequent-${message[0]}`} onClick={() => speakMessage(message)}><span aria-hidden="true">{message[2]}</span>{language === "fr" ? message[0] : message[1]}</button>)}
+              </div>
+            )}
+
             <div className="board-theme-tabs" role="tablist" aria-label={language === "fr" ? "Thèmes du tableau" : "Board themes"}>
-              {boardThemes.map((themeItem) => <button key={themeItem.id} role="tab" aria-selected={boardTheme === themeItem.id} className={boardTheme === themeItem.id && !boardQuery ? "selected" : ""} onClick={() => { setBoardTheme(themeItem.id); setBoardSearch(""); }}><span>{themeItem.icon}</span>{language === "fr" ? themeItem.fr : themeItem.en}</button>)}
+              {boardThemes.map((themeItem) => <button key={themeItem.id} role="tab" aria-selected={boardTheme === themeItem.id} className={boardTheme === themeItem.id && !boardQuery ? "selected" : ""} onClick={() => { setBoardTheme(themeItem.id); setBoardSearch(""); }}><span aria-hidden="true">{themeItem.icon}</span>{language === "fr" ? themeItem.fr : themeItem.en}</button>)}
             </div>
+
             <div className="message-grid">
               {boardResults.map((message) => {
                 const messageText = language === "fr" ? message[0] : message[1];
-                return <button key={`${message[0]}-${message[1]}`} className={spoken === messageText ? "message-button spoken" : "message-button"} onClick={() => speakMessage(messageText)}>
+                return <button key={`${message[0]}-${message[1]}`} className={spoken === messageText ? "message-button spoken" : "message-button"} onClick={() => speakMessage(message)}>
                   <span className="message-symbol" aria-hidden="true">{message[2]}</span>
                   {messageText}
                 </button>
               })}
             </div>
             {!boardResults.length && <p className="board-no-results">{language === "fr" ? "Aucun message trouvé. Essayez un autre mot." : "No messages found. Try another word."}</p>}
-            {spoken && <div className="spoken-bar" aria-live="polite"><span>)))</span> {spoken}</div>}
+
+            {spoken && <div className="spoken-bar" aria-live="polite">
+              <span className="equalizer" aria-hidden="true"><i /><i /><i /><i /></span>
+              <span className="spoken-text">{spoken}</span>
+              <span className="spoken-actions">
+                <button onClick={() => speakText(spoken)}>{language === "fr" ? "Réécouter" : "Play again"}</button>
+                {spokenMessage && <button onClick={() => setShowBig(spokenMessage)}>{language === "fr" ? "Montrer en grand" : "Show it big"}</button>}
+              </span>
+            </div>}
+          </div>
+        </div>
+      )}
+
+      {showBig && (
+        <div className="show-screen" role="dialog" aria-modal="true" aria-label={language === "fr" ? "Message en grand" : "Message shown large"} onMouseDown={(event) => { if (event.target === event.currentTarget) setShowBig(null); }}>
+          <div className="show-card">
+            <span className="show-symbol" aria-hidden="true">{showBig[2]}</span>
+            <strong>{language === "fr" ? showBig[0] : showBig[1]}</strong>
+            <div className="show-actions">
+              <button onClick={() => speakText(language === "fr" ? showBig[0] : showBig[1])}>🔊 {language === "fr" ? "Réécouter" : "Play again"}</button>
+              <button onClick={() => setShowBig(null)}>{language === "fr" ? "Fermer" : "Close"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {settingsOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
+          <section className="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">{roleIdentity.name} · {roleIdentity.detail}</p>
+                <h2 id="settings-title">{language === "fr" ? "Réglages" : "Settings"}</h2>
+              </div>
+              <button className="close-button" onClick={() => setSettingsOpen(false)} aria-label={language === "fr" ? "Fermer" : "Close"}>×</button>
+            </div>
+            <div className="settings-group">
+              <span className="settings-label">{language === "fr" ? "Langue" : "Language"}</span>
+              <div className="language-switch" role="group" aria-label={language === "fr" ? "Choisir la langue" : "Choose language"}>
+                <button className={language === "fr" ? "selected" : ""} onClick={() => chooseLanguage("fr")} aria-pressed={language === "fr"}>Français</button>
+                <button className={language === "en" ? "selected" : ""} onClick={() => chooseLanguage("en")} aria-pressed={language === "en"}>English</button>
+              </div>
+            </div>
+            <div className="settings-group">
+              <span className="settings-label">{language === "fr" ? "Confort de lecture" : "Reading comfort"}</span>
+              <div className="settings-row">
+                <button className="text-size-button" onClick={toggleTextSize} aria-pressed={textSize === "large"}><span aria-hidden="true">A+</span>{textSize === "large" ? (language === "fr" ? "Texte agrandi" : "Large text") : (language === "fr" ? "Agrandir le texte" : "Make text larger")}</button>
+                <button className="theme-button" onClick={toggleTheme} aria-pressed={theme === "night"}><span aria-hidden="true">{theme === "day" ? "☾" : "☀"}</span>{theme === "day" ? (language === "fr" ? "Thème de nuit" : "Night theme") : (language === "fr" ? "Thème de jour" : "Day theme")}</button>
+              </div>
+            </div>
+            {role === "patient" && <div className="settings-group">
+              <span className="settings-label">{language === "fr" ? "Aide" : "Help"}</span>
+              <button className="settings-link" onClick={() => { setSettingsOpen(false); setSessionOpen(false); setView("privacy"); }}><span aria-hidden="true">🔒</span>{language === "fr" ? "Aide et confidentialité" : "Help and privacy"}<i aria-hidden="true">→</i></button>
+            </div>}
+            <button className="sign-out-button" onClick={signOut}>{language === "fr" ? "Quitter Élan" : "Sign out"}</button>
           </section>
         </div>
       )}
@@ -485,7 +688,7 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
       {consentOpen && (
         <div className="modal-backdrop" role="presentation">
           <section className="consent-modal" role="dialog" aria-modal="true" aria-labelledby="consent-title">
-            <div className="consent-symbol">●</div>
+            <div className="consent-symbol" aria-hidden="true">🎙️</div>
             <p className="eyebrow">{language === "fr" ? "Votre choix" : "Your choice"}</p>
             <h2 id="consent-title">{language === "fr" ? "Autoriser les enregistrements vocaux?" : "Allow voice recordings?"}</h2>
             <p>{language === "fr" ? "Élan enregistrera votre voix seulement lorsque vous appuyez sur Enregistrer. Les enregistrements servent à vous réécouter et peuvent être révisés par votre orthophoniste autorisée." : "Élan records your voice only when you press Record. Recordings are for playback and may be reviewed by your authorized speech therapist."}</p>
@@ -494,56 +697,65 @@ export default function ElanApp({ initialRole, currentName }: { initialRole: Rol
           </section>
         </div>
       )}
+
+      {toast && <div className={toast.tone === "error" ? "toast error" : "toast"} role="status"><span aria-hidden="true">{toast.tone === "error" ? "!" : "✓"}</span>{toast.text}</div>}
     </div>
   );
 }
 
-function Today({ language, onStart, onLibrary, onPlan, onBoard, onProgress, attemptCount, dailySession }: { language: Language; onStart: () => void; onLibrary: () => void; onPlan: () => void; onBoard: () => void; onProgress: () => void; attemptCount: number; dailySession?: ProductData["dailySession"] }) {
+function Home({ language, onStart, onShuffle, onLibrary, onPlan, onBoard, onProgress, attemptCount, dailySession, isPlanned }: { language: Language; onStart: () => void; onShuffle: () => void; onLibrary: () => void; onPlan: () => void; onBoard: () => void; onProgress: () => void; attemptCount: number; dailySession?: ProductData["dailySession"]; isPlanned: boolean }) {
   const t = copy[language];
   const dailyEntries = dailySession?.entries.slice(0, 3) ?? [];
+  const dailyDone = dailySession?.entries.filter((entry) => entry.status === "completed").length ?? 0;
+  const dailyTotal = dailySession?.entries.length ?? 3;
   const dailyDuration = dailySession?.targetDuration ?? 18;
+  const started = dailyDone > 0 && dailyDone < dailyTotal;
   return <div className="dashboard accessible-home">
-    <section className="home-welcome" aria-labelledby="home-question">
-      <div className="home-welcome-copy">
-        <span className="status-chip"><span className="status-dot" /> {language === "fr" ? "Votre plan est prêt" : "Your plan is ready"}</span>
-        <h2 id="home-question">{language === "fr" ? "Que voulez-vous faire aujourd’hui?" : "What would you like to do today?"}</h2>
-        <p>{language === "fr" ? "Commencez la séance prévue ou choisissez une activité qui correspond à votre énergie." : "Start the planned session or choose an activity that matches your energy."}</p>
-        <button className="home-primary-action" onClick={onStart}><span className="home-action-icon" aria-hidden="true">▶</span><span><b>{dailySession ? (language === "fr" ? "Commencer ma séance du jour" : "Start today’s session") : t.start}</b><small>{dailyDuration} {language === "fr" ? "minutes · guidée étape par étape" : "minutes · guided step by step"}</small></span><span className="home-action-arrow" aria-hidden="true">→</span></button>
-        <button className="home-secondary-action" onClick={onLibrary}>{language === "fr" ? "Choisir une autre séance" : "Choose another session"}<span aria-hidden="true">→</span></button>
+    <section className="home-hero" aria-labelledby="home-hero-title">
+      <div className="home-hero-copy">
+        <span className="status-chip"><span className="status-dot" /> {isPlanned ? (language === "fr" ? "Votre séance est prête" : "Your session is ready") : (language === "fr" ? "Une nouvelle séance à chaque fois" : "A fresh session every time")}</span>
+        <h2 id="home-hero-title">{started ? (language === "fr" ? "Continuez à votre rythme." : "Continue at your own pace.") : (language === "fr" ? "Une activité à la fois, à votre rythme." : "One activity at a time, at your pace.")}</h2>
+        <ol className="home-step-list">
+          {dailyEntries.length ? dailyEntries.map((entry, index) => <li key={entry.id} className={entry.status === "completed" ? "done" : ""}><span aria-hidden="true">{entry.status === "completed" ? "✓" : index + 1}</span><div><b>{language === "fr" ? entry.titleFr : entry.titleEn}</b><small>{language === "fr" ? entry.descriptionFr : entry.descriptionEn}</small></div></li>) : <>
+            <li><span aria-hidden="true">1</span><div><b>{t.words}</b><small>{t.wordsSub}</small></div></li>
+            <li><span aria-hidden="true">2</span><div><b>{t.movement}</b><small>{t.movementSub}</small></div></li>
+            <li><span aria-hidden="true">3</span><div><b>{t.mission}</b><small>{t.missionSub}</small></div></li>
+          </>}
+        </ol>
+        <button className="home-primary-action" onClick={onStart}>
+          <span className="home-action-icon" aria-hidden="true">▶</span>
+          <span><b>{started ? (language === "fr" ? "Continuer ma séance" : "Continue my session") : dailySession ? (language === "fr" ? "Commencer ma séance du jour" : "Start today’s session") : t.start}</b><small>{started ? `${dailyDone} ${language === "fr" ? "sur" : "of"} ${dailyTotal} ${language === "fr" ? "activités faites" : "activities done"}` : `${dailyDuration} ${language === "fr" ? "minutes · guidée étape par étape" : "minutes · guided step by step"}`}</small></span>
+          <span className="home-action-arrow" aria-hidden="true">→</span>
+        </button>
+        <div className="home-hero-links">
+          {!isPlanned && <button className="home-secondary-action" onClick={onShuffle}>🔀 {language === "fr" ? "Une autre proposition" : "Another suggestion"}</button>}
+          <button className="home-secondary-action" onClick={onLibrary}>{t.shorter}<span aria-hidden="true">→</span></button>
+        </div>
       </div>
-      <button className="home-board-callout" onClick={onBoard}>
-        <span className="home-board-icon" aria-hidden="true">•••</span>
-        <span><small>{language === "fr" ? "Toujours disponible" : "Always available"}</small><b>{language === "fr" ? "J’ai besoin de communiquer" : "I need to communicate"}</b><em>{language === "fr" ? "Ouvrir le tableau de 60 messages" : "Open the 60-message board"}</em></span>
+      <div className="home-hero-art" aria-hidden="true"><span>{dailyDuration}</span><small>min</small></div>
+    </section>
+
+    <section className="home-tiles" aria-label={language === "fr" ? "Accès rapide" : "Quick access"}>
+      <button className="home-tile talk" onClick={onBoard}>
+        <span className="home-tile-icon" aria-hidden="true">💬</span>
+        <span><small>{language === "fr" ? "Toujours disponible" : "Always available"}</small><b>{t.needToTalk}</b><em>{language === "fr" ? "60 messages · lus à voix haute" : "60 messages · read aloud"}</em></span>
+        <span aria-hidden="true">→</span>
+      </button>
+      <button className="home-tile plan" onClick={onPlan}>
+        <span className="home-tile-icon" aria-hidden="true">📋</span>
+        <span><small>{t.next}</small><b>16 {language === "fr" ? "juillet · 10:30" : "July · 10:30"}</b><em>{t.clinician}</em></span>
         <span aria-hidden="true">→</span>
       </button>
     </section>
 
-    <section className="home-shortcuts" aria-labelledby="home-shortcuts-title">
-      <div className="home-section-heading"><div><p className="eyebrow">{language === "fr" ? "Accès rapide" : "Quick access"}</p><h3 id="home-shortcuts-title">{language === "fr" ? "Retrouvez facilement vos outils" : "Find your tools easily"}</h3></div></div>
-      <div className="home-shortcut-grid">
-        <button onClick={onLibrary}><span className="shortcut-icon sessions" aria-hidden="true">▶</span><span><b>{language === "fr" ? "Mes séances" : "My sessions"}</b><small>{language === "fr" ? "Choisir par durée et effort" : "Choose by time and effort"}</small></span><span aria-hidden="true">→</span></button>
-        <button onClick={onPlan}><span className="shortcut-icon plan" aria-hidden="true">☷</span><span><b>{language === "fr" ? "Mon plan" : "My plan"}</b><small>{language === "fr" ? "Rendez-vous, tâches et alimentation" : "Appointments, to-dos, and diet"}</small></span><span aria-hidden="true">→</span></button>
-        <button onClick={onProgress}><span className="shortcut-icon progress" aria-hidden="true">↗</span><span><b>{language === "fr" ? "Mes progrès" : "My progress"}</b><small>{attemptCount ? (language === "fr" ? `${attemptCount} séances enregistrées` : `${attemptCount} sessions recorded`) : (language === "fr" ? "Voir ce qui devient plus facile" : "See what is becoming easier")}</small></span><span aria-hidden="true">→</span></button>
+    <section className="home-rhythm-strip card-surface" aria-labelledby="home-rhythm-title">
+      <div>
+        <p className="eyebrow">{t.rhythm}</p>
+        <h3 id="home-rhythm-title">{attemptCount ? (language === "fr" ? `${attemptCount} séances enregistrées` : `${attemptCount} sessions recorded`) : t.rhythmSub}</h3>
+        <p>{t.noStreak}</p>
       </div>
-    </section>
-
-    <section className="home-details" aria-labelledby="home-plan-title">
-      <article className="home-today-card card-surface">
-        <div className="home-section-heading"><div><p className="eyebrow">{t.plan}</p><h3 id="home-plan-title">{dailySession ? (language === "fr" ? "Votre nouvelle séance du jour" : "Your new session for today") : (language === "fr" ? "Votre séance en 3 étapes" : "Your session in 3 steps")}</h3></div><span className="home-duration">{dailyDuration} min</span></div>
-        <ol className="home-step-list">
-          {dailyEntries.length ? dailyEntries.map((entry, index) => <li key={entry.id}><span>{entry.status === "completed" ? "✓" : index + 1}</span><div><b>{language === "fr" ? entry.titleFr : entry.titleEn}</b><small>{language === "fr" ? entry.descriptionFr : entry.descriptionEn}</small></div></li>) : <>
-            <li><span>1</span><div><b>{t.words}</b><small>{t.wordsSub}</small></div></li>
-            <li><span>2</span><div><b>{t.movement}</b><small>{language === "fr" ? "Avec une personne près de vous" : "With someone nearby"}</small></div></li>
-            <li><span>3</span><div><b>{t.mission}</b><small>{t.missionSub}</small></div></li>
-          </>}
-        </ol>
-        <button className="home-start-again" onClick={onStart}>{dailySession ? (language === "fr" ? "Commencer la séance guidée" : "Start guided session") : t.start}<span aria-hidden="true">→</span></button>
-      </article>
-
-      <div className="home-side-stack">
-        <button className="home-appointment card-surface" onClick={onPlan}><span className="appointment-date"><strong>16</strong><small>{language === "fr" ? "JUIL." : "JUL."}</small></span><span><small>{t.next}</small><b>10:30 · {t.clinician}</b><em>{language === "fr" ? "Voir dans Mon plan" : "View in My plan"}</em></span><span aria-hidden="true">→</span></button>
-        <article className="home-rhythm card-surface"><div><p className="eyebrow">{t.rhythm}</p><h3>{t.rhythmSub}</h3><p>{t.noStreak}</p></div><div className="home-week" aria-label={language === "fr" ? "Trois journées de pratique cette semaine" : "Three practice days this week"}><span className="done">L</span><span className="done">M</span><span className="today-dot">M</span><span>J</span><span>V</span><span>S</span><span>D</span></div></article>
-      </div>
+      <div className="home-week" aria-label={language === "fr" ? "Trois journées de pratique cette semaine" : "Three practice days this week"}><span className="done">L</span><span className="done">M</span><span className="today-dot">M</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
+      <button className="home-path-link" onClick={onProgress}>{language === "fr" ? "Voir mon chemin" : "See my path"}<span aria-hidden="true">→</span></button>
     </section>
   </div>;
 }
@@ -557,7 +769,7 @@ function Session({ language, step, setStep, energy, setEnergy, cue, setCue, reco
   return <div className="session-layout">
     <div className="session-progress" aria-label={language === "fr" ? `Étape ${current + 1} sur 5` : `Step ${current + 1} of 5`}><span style={{ width: `${(current + 1) * 20}%` }} /></div>
     <div className="session-topline"><button className="back-button" onClick={previous}>← {language === "fr" ? "Retour" : "Back"}</button><span>{current + 1} / 5</span><button className="pause-button" onClick={onClose}>Ⅱ {language === "fr" ? "Mettre en pause" : "Pause"}</button></div>
-    <section className="session-card">
+    <section className="session-card" key={step}>
       {step === "checkin" && <>
         <p className="eyebrow">{language === "fr" ? "Petit bilan" : "Quick check-in"}</p>
         <h2>{language === "fr" ? "Comment est votre énergie?" : "How is your energy?"}</h2>
@@ -597,12 +809,12 @@ function Session({ language, step, setStep, energy, setEnergy, cue, setCue, reco
         <button className="secondary-button wide-button" onClick={onBoard}>{language === "fr" ? "Ouvrir mon tableau de communication" : "Open my communication board"}</button>
         <button className="primary-button session-next" onClick={() => { onComplete(); next(); }}>{language === "fr" ? "Mission terminée" : "Mission complete"}<span>→</span></button>
       </>}
-      {step === "complete" && <div className="complete-state"><div className="complete-mark">✓</div><p className="eyebrow">{language === "fr" ? "Séance terminée" : "Session complete"}</p><h2>{language === "fr" ? "Vous avez fait quelque chose d’important aujourd’hui." : "You did something meaningful today."}</h2><p>{language === "fr" ? "Vous avez pratiqué une phrase utile avec moins d’aide. Votre effort est enregistré." : "You practised a useful phrase with less help. Your effort has been saved."}</p><div className="achievement"><span>+1</span><div><b>{language === "fr" ? "Repère ajouté à votre atlas" : "Place added to your atlas"}</b><small>{language === "fr" ? "Vie quotidienne" : "Daily life"}</small></div></div><button className="primary-button" onClick={onClose}>{language === "fr" ? "Retour à aujourd’hui" : "Back to today"}</button></div>}
+      {step === "complete" && <div className="complete-state"><div className="complete-mark">✓</div><p className="eyebrow">{language === "fr" ? "Séance terminée" : "Session complete"}</p><h2>{language === "fr" ? "Vous avez fait quelque chose d’important aujourd’hui." : "You did something meaningful today."}</h2><p>{language === "fr" ? "Vous avez pratiqué une phrase utile avec moins d’aide. Votre effort est enregistré." : "You practised a useful phrase with less help. Your effort has been saved."}</p><div className="achievement"><span>+1</span><div><b>{language === "fr" ? "Repère ajouté à votre chemin" : "Marker added to your path"}</b><small>{language === "fr" ? "Vie quotidienne" : "Daily life"}</small></div></div><button className="primary-button" onClick={onClose}>{language === "fr" ? "Retour à l’accueil" : "Back to home"}</button></div>}
     </section>
   </div>;
 }
 
-function ResearchLink({ language, label, href }: { language: Language; label: string; href: string }) { return <a className="research-pill" href={href} target="_blank" rel="noreferrer"><span>↗</span><small>{language === "fr" ? "Fondé sur la recherche" : "Research-backed"}</small><b>{label}</b></a>; }
+function ResearchLink({ language, label, href }: { language: Language; label: string; href: string }) { return <details className="info-disclosure inline"><summary><span aria-hidden="true">i</span>{language === "fr" ? "Fondé sur la recherche" : "Research-backed"}</summary><div><a href={href} target="_blank" rel="noreferrer">{label} ↗</a></div></details>; }
 
 function FamilyPortal({ language, tab, data, dataStatus, setData, setDataStatus, onBoard, onPlan }: { language: Language; tab: string; data: ProductData; dataStatus: "loading" | "saved" | "offline"; setData: Dispatch<SetStateAction<ProductData>>; setDataStatus: (status: "loading" | "saved" | "offline") => void; onBoard: () => void; onPlan: () => void }) {
   const [note, setNote] = useState("");
@@ -612,7 +824,7 @@ function FamilyPortal({ language, tab, data, dataStatus, setData, setDataStatus,
     if (!note.trim()) return;
     setSent(false);
     try {
-      const response = await fetch("/api/product", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "observation", authorName: "Sylvie", category, note }) });
+      const response = await fetch("/api/product", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "observation", authorName: "Djimmy", category, note }) });
       if (!response.ok) throw new Error();
       const { observation } = await response.json();
       setData((current) => ({ ...current, observations: [observation, ...current.observations] }));
@@ -651,7 +863,6 @@ function FamilyPortal({ language, tab, data, dataStatus, setData, setDataStatus,
   </section>;
 }
 
-
 function PortalHeading({ eyebrow, title, intro, status, language }: { eyebrow: string; title: string; intro: string; status: "loading" | "saved" | "offline"; language: Language }) { return <div className="portal-heading"><div><p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{intro}</p></div><span className={`data-status ${status}`}><i />{status === "loading" ? (language === "fr" ? "Chargement" : "Loading") : status === "saved" ? (language === "fr" ? "Données synchronisées" : "Data synced") : (language === "fr" ? "Mode hors ligne" : "Offline mode")}</span></div>; }
 function GuidanceCard({ number, title, text }: { number: string; title: string; text: string }) { return <div className="guidance-card"><span>{number}</span><h3>{title}</h3><p>{text}</p></div>; }
 function EmptyState({ text }: { text: string }) { return <div className="empty-state"><span>· · ·</span><p>{text}</p></div>; }
@@ -673,12 +884,31 @@ function PrivacyCenter({ language, data, setData, onConsent, dataStatus }: { lan
   </section>;
 }
 
-function Progress({ language }: { language: Language }) {
-  return <section className="content-view"><p className="eyebrow">{language === "fr" ? "Votre chemin" : "Your journey"}</p><h2>{language === "fr" ? "Ce qui devient plus facile" : "What is becoming easier"}</h2><p className="view-intro">{language === "fr" ? "Vos progrès sont comparés à vos propres expériences, jamais à celles des autres." : "Your progress is compared with your own experience, never with anyone else’s."}</p><div className="progress-grid"><div className="progress-feature"><span className="progress-number">5</span><h3>{language === "fr" ? "mots personnels demandent moins d’aide" : "personal words need less help"}</h3><div className="support-track"><span style={{width:"74%"}} /></div><small>{language === "fr" ? "Depuis quatre semaines" : "Over four weeks"}</small></div><div className="progress-list"><ProgressItem letter="T" title={language === "fr" ? "Script du téléphone" : "Telephone script"} detail={language === "fr" ? "Utilisé avec un seul indice" : "Used with one cue"} /><ProgressItem letter="C" title={language === "fr" ? "Mission dans la cuisine" : "Kitchen mission"} detail={language === "fr" ? "Réussie 3 fois cette semaine" : "Completed 3 times this week"} /><ProgressItem letter="M" title={language === "fr" ? "Se lever d’une chaise" : "Stand up from a chair"} detail={language === "fr" ? "Pratiqué avec supervision" : "Practised with supervision"} /></div></div></section>;
-}
-
-function ProgressItem({ letter, title, detail }: { letter: string; title: string; detail: string }) { return <div className="progress-item"><span>{letter}</span><div><b>{title}</b><small>{detail}</small></div><strong>✓</strong></div>; }
-
-function SimpleView({ language, onBoard, onPlan }: { language: Language; view: View; onBoard: () => void; onPlan: () => void }) {
-  return <section className="content-view"><p className="eyebrow">Élan</p><h2>{language === "fr" ? "Communiquez à votre façon." : "Communicate your way."}</h2><p className="view-intro">{language === "fr" ? "Parler n’est qu’une façon de se faire comprendre." : "Speaking is only one way to be understood."}</p><div className="support-cards"><button onClick={onBoard}><span>•••</span><b>{language === "fr" ? "Tableau de communication" : "Communication board"}</b><small>{language === "fr" ? "60 messages organisés par thème" : "60 messages organized by theme"}</small></button><button onClick={onPlan}><span>i</span><b>{language === "fr" ? "Planifier une conversation" : "Plan a conversation"}</b><small>{language === "fr" ? "Choisir une séance à faire avec Sylvie" : "Choose a session to complete with Sylvie"}</small></button></div></section>;
+function Progress({ language, onHome }: { language: Language; onHome: () => void }) {
+  const milestones = language === "fr" ? [
+    { icon: "☎️", title: "Script du téléphone", detail: "Utilisé avec un seul indice" },
+    { icon: "💧", title: "Mission dans la cuisine", detail: "Réussie 3 fois cette semaine" },
+    { icon: "🪑", title: "Se lever d’une chaise", detail: "Pratiqué avec supervision" },
+  ] : [
+    { icon: "☎️", title: "Telephone script", detail: "Used with one cue" },
+    { icon: "💧", title: "Kitchen mission", detail: "Completed 3 times this week" },
+    { icon: "🪑", title: "Stand up from a chair", detail: "Practised with supervision" },
+  ];
+  return <section className="content-view path-view">
+    <p className="eyebrow">{language === "fr" ? "Votre chemin" : "Your path"}</p>
+    <h2>{language === "fr" ? "Ce qui devient plus facile" : "What is becoming easier"}</h2>
+    <p className="view-intro">{language === "fr" ? "Vos progrès sont comparés à vos propres expériences, jamais à celles des autres." : "Your progress is compared with your own experience, never with anyone else’s."}</p>
+    <div className="path-feature card-surface">
+      <span className="path-number">5</span>
+      <div>
+        <h3>{language === "fr" ? "mots personnels demandent moins d’aide" : "personal words need less help"}</h3>
+        <div className="support-track"><span style={{width:"74%"}} /></div>
+        <small>{language === "fr" ? "Depuis quatre semaines" : "Over four weeks"}</small>
+      </div>
+    </div>
+    <ol className="path-milestones">
+      {milestones.map((milestone) => <li key={milestone.title} className="card-surface"><span className="path-milestone-icon" aria-hidden="true">{milestone.icon}</span><div><b>{milestone.title}</b><small>{milestone.detail}</small></div><strong aria-hidden="true">✓</strong></li>)}
+    </ol>
+    <button className="home-path-link" onClick={onHome}>← {language === "fr" ? "Retour à l’accueil" : "Back to home"}</button>
+  </section>;
 }
